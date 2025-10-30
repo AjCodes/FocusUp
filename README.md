@@ -212,7 +212,7 @@ Full schema is in `supabase-setup.sql`.
 
 ## 📝 Notes
 
-This was built for my [course name/semester/year] project. The code isn't perfect and there are definitely some rough edges, but I learned a ton building it.
+This was built for my ICT project. The code isn't perfect and there are definitely some rough edges, but I learned a ton building it.
 
 Some things are commented out or have TODOs - those were features I started but didn't finish in time.
 
@@ -220,8 +220,8 @@ Some things are commented out or have TODOs - those were features I started but 
 
 <div align="center">
 
-**Made with ☕ by [Your Name]**
+**by [AJ]**
 
-*[Semester/Year]*
+*[Year 1 /Semester 2]*
 
 </div>
