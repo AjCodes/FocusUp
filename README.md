@@ -220,7 +220,7 @@ Some things are commented out or have TODOs - those were features I started but 
 
 <div align="center">
 
-**by [AJ]**
+**by [ AJ ]**
 
 *[Year 1 /Semester 2]*
 
