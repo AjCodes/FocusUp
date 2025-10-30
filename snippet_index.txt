@@ -1,4 +1,0 @@
-const FOCUS_ATTRIBUTES = {
-  CO: { label: 'Cognitive', emoji: 'ðŸ§ ', color: '#3B82F6' },
-  PH: { label: 'Physical', emoji: 'ðŸ’ª', color: '#10B981' },
-  EM: { label: 'Emotional', emoji: 'â¤ï¸', 

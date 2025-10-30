@@ -44,21 +44,21 @@ npm install
 
 ### 2️⃣ Database Setup
 
-I'm using Supabase for the backend. You'll need to:
+The database schema is already set up in Supabase with these tables:
 
-1. Create a free account at [supabase.com](https://supabase.com)
-2. Make a new project (takes about 2 minutes to set up)
-3. Go to the SQL Editor in your dashboard
-4. Copy everything from `supabase-setup.sql` and run it
-5. This creates all the tables: tasks, habits, habit_completions, focus_sessions, and user_stats
+**Core Tables:**
+- `tasks` - User's to-do items with priority levels
+- `habits` - Daily habits with attribute assignments
+- `habit_completions` - Daily habit check-ins
+- `focus_sessions` - Pomodoro session history
+- `user_stats` - User progress (coins, XP, character level, streaks)
 
-To verify it worked, run this query:
-```sql
-SELECT table_name FROM information_schema.tables
-WHERE table_schema = 'public';
-```
+**Reward System Tables:**
+- `daily_tracking` - Tracks daily counts for diminishing returns
+- `session_verifications` - Anti-cheat verification records
+- `reward_events` - Complete audit log of all rewards
 
-You should see all 5 tables.
+All tables have proper indexes, constraints, and Row Level Security policies.
 
 ### 3️⃣ Environment Variables
 
@@ -113,6 +113,28 @@ lib/
 
 utils/               # Helper functions
 ```
+
+---
+
+## 🎮 Reward System (v2 - No Limits!)
+
+**Core Principle:** Never limit productivity. Use smart scaling instead.
+
+**How it works:**
+- ✅ Complete as many habits/tasks/sprints as you want
+- ✅ First items give full rewards (most efficient)
+- ✅ Later items give diminished but meaningful rewards (never zero)
+- ✅ Work during focus sessions: 2× multiplier
+- ✅ Work outside focus: 0.5× multiplier
+- ✅ System detects and penalizes spam/duplicates
+
+**Progression:**
+- Exponential XP curve (RuneScape-inspired)
+- Character levels 1-99 with attribute gates
+- Takes years to max out, not weeks
+- Every reward feels earned
+
+See `src/features/rewards/` for implementation details.
 
 ---
 

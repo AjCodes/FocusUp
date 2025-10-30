@@ -5,7 +5,9 @@
       "Bash(cat:*)",
       "Bash(npm install:*)",
       "Bash(npm start)",
-      "Bash(timeout 5 npm start)"
+      "Bash(timeout 5 npm start)",
+      "Bash(git rm:*)",
+      "Bash(mkdir:*)"
     ],
     "deny": [],
     "ask": []

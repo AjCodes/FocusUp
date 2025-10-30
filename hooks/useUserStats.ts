@@ -2,11 +2,16 @@ import { useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 import { UserStats } from '../types/supabase';
+import { RewardEngine } from '../src/features/rewards/RewardEngine';
+import { DailyTracker } from '../src/features/rewards/DailyTracker';
 
 const USER_ID_KEY = 'focusup-user-id';
 
 type ThemeMode = 'focus' | 'break';
 type AttributeKey = 'PH' | 'CO' | 'EM' | 'SO';
+
+const rewardEngine = new RewardEngine();
+const dailyTracker = new DailyTracker();
 
 // Helper function to check if string is a valid UUID
 const isUuid = (s: string) => /^[0-9a-fA-F-]{36}$/.test(s);
@@ -243,6 +248,88 @@ export const useUserStats = () => {
     }
   };
 
+  // NEW: Add XP with context and diminishing returns
+  const addXPWithContext = async (
+    attribute: AttributeKey,
+    context: {
+      duringFocus: boolean;
+      streak: number;
+    }
+  ) => {
+    const userId = await getUserId();
+    const habitNumber = (await dailyTracker.getHabitCount(userId)) + 1;
+    const allWorked = await dailyTracker.allAttributesWorkedToday(userId);
+
+    const result = rewardEngine.calculateHabitXP({
+      itemNumber: habitNumber,
+      duringFocus: context.duringFocus,
+      isDuplicate: false,
+      isRapidCompletion: false,
+      timeOfDay: new Date().getHours(),
+      streak: context.streak,
+      allAttributesWorkedToday: allWorked,
+    });
+
+    if (result.success) {
+      await addXP(attribute, result.amount);
+      await dailyTracker.incrementHabit(userId, attribute);
+    }
+
+    return result;
+  };
+
+  // NEW: Add coins with context and diminishing returns
+  const addCoinsWithContext = async (
+    priority: 'low' | 'medium' | 'high',
+    context: {
+      duringFocus: boolean;
+      isDuplicate: boolean;
+      isRapid: boolean;
+    }
+  ) => {
+    const userId = await getUserId();
+    const taskNumber = (await dailyTracker.getTaskCount(userId)) + 1;
+
+    const result = rewardEngine.calculateTaskCoins(priority, {
+      itemNumber: taskNumber,
+      duringFocus: context.duringFocus,
+      isDuplicate: context.isDuplicate,
+      isRapidCompletion: context.isRapid,
+      timeOfDay: new Date().getHours(),
+      streak: userStats.current_streak,
+      allAttributesWorkedToday: false,
+    });
+
+    if (result.success) {
+      await addCoins(result.amount);
+      await dailyTracker.incrementTask(userId);
+    }
+
+    return result;
+  };
+
+  // NEW: Get character level
+  const getCharacterLevel = (): number => {
+    const attributes = userStats.attributes || { PH: 0, CO: 0, EM: 0, SO: 0 };
+    return rewardEngine.calculateCharacterLevel(attributes, userStats.total_coins);
+  };
+
+  // NEW: Check if can level up
+  const checkLevelUp = () => {
+    const currentLevel = getCharacterLevel();
+    const attributes = userStats.attributes || { PH: 0, CO: 0, EM: 0, SO: 0 };
+    return rewardEngine.canLevelUp(currentLevel, attributes, userStats.total_coins);
+  };
+
+  // NEW: Perform level up
+  const levelUpCharacter = async (): Promise<boolean> => {
+    const levelCheck = checkLevelUp();
+    if (!levelCheck.canLevel || !levelCheck.cost) return false;
+
+    await addCoins(-levelCheck.cost);
+    return true;
+  };
+
   useEffect(() => {
     loadStats();
   }, []);
@@ -270,5 +357,12 @@ export const useUserStats = () => {
         console.error('Error saving profile image:', error);
       }
     },
+    // NEW: Export new reward methods
+    addXPWithContext,
+    addCoinsWithContext,
+    getCharacterLevel,
+    checkLevelUp,
+    levelUpCharacter,
+    rewardEngine, // Export for UI use
   };
 };

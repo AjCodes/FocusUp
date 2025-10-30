@@ -12,11 +12,25 @@ export const POMODORO = {
   MAX_BREAK_SECONDS: 30 * 60, // 30 minutes
 } as const;
 
-// Reward System - All rewards tied to sprint completion
+// Reward System - No Limits with Diminishing Returns
 export const REWARDS = {
-  SPRINT_BASE: 5,          // Base reward for completing any sprint (25 min work + 5 min break)
-  TASK_COMPLETE: 10,       // Bonus for completing a task during sprint
-  HABIT_XP: 10,            // XP awarded to habit's attribute on sprint completion
+  HABIT_BASE_XP: 10,
+  TASK_BASE_COINS: { low: 3, medium: 6, high: 10 },
+  SPRINT_BASE_COINS: 5,
+
+  FOCUS_MULTIPLIER: 2.0,
+  NON_FOCUS_MULTIPLIER: 0.5,
+
+  TIME_BONUSES: {
+    MORNING: 1.2,
+    AFTERNOON: 1.1,
+    EVENING: 1.0,
+    LATE_NIGHT: 0.8
+  },
+
+  VERIFICATION_TIMES: [8, 15, 20],
+  VERIFICATION_TIMEOUT: 60,
+  MINIMUM_FOCUS_TIME: 15 * 60
 } as const;
 
 // Character Attributes
