@@ -114,11 +114,11 @@ npm start
 
 Then press:
 
-- "a" → Android
+- **a** → Android
 
-- "i" → iOS
+- **i** → iOS
 
-- "w" → Web
+- **w** → Web
 
 
 ## 🧰 Database Setup
@@ -127,23 +127,23 @@ The Supabase schema includes the following tables:
 
 Core Tables
 
-- "tasks" – To-do items
+- **tasks** – To-do items
 
-- "habits" – Daily habits
+- **habits** – Daily habits
 
-- "habit_completions" – Daily check-ins
+- **habit_completions** – Daily check-ins
 
-- "focus_sessions" – Pomodoro session logs
+- **focus_sessions** – Pomodoro session logs
 
-- "user_stats" – XP, coins, levels, streaks
+- **user_stats** – XP, coins, levels, streaks
 
 Reward Tracking
 
-- "daily_tracking", "reward_events", etc.
+- **daily_tracking**, **reward_events**, etc.
 
 - Includes RLS policies, foreign keys, and performance indexes
 
-Full schema available in "supabase-setup.sql"
+Full schema available in **supabase-setup.sql**
 
 ---
 
