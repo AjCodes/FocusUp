@@ -37,9 +37,25 @@ export const useUserStats = () => {
   const [profileImageUri, setProfileImageUriState] = useState<string | null>(null);
 
   const getUserId = async (): Promise<string> => {
+    // First check if user is authenticated with Supabase
+    if (supabase) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+
+        // If logged in with Google, use their Supabase user ID
+        if (session?.user?.id) {
+          return session.user.id; // ✅ Real Google OAuth ID
+        }
+      } catch (error) {
+        console.error('Error getting session:', error);
+      }
+    }
+
+    // Guest mode: Use local storage ID
     let userId = await AsyncStorage.getItem(USER_ID_KEY);
     if (!userId) {
-      userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      // Generate guest ID (prefixed with 'guest_' for clarity)
+      userId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       await AsyncStorage.setItem(USER_ID_KEY, userId);
     }
     return userId;
@@ -330,6 +346,67 @@ export const useUserStats = () => {
     return true;
   };
 
+  /**
+   * Migrate guest data to authenticated account when user signs in
+   */
+  const migrateGuestToAuth = async (guestId: string, authId: string) => {
+    if (!supabase) return;
+
+    console.log(`Migrating data from guest ${guestId} to auth ${authId}`);
+
+    try {
+      // 1. Migrate user_stats
+      const { data: guestStats } = await supabase
+        .from('user_stats')
+        .select('*')
+        .eq('user_id', guestId)
+        .single();
+
+      if (guestStats) {
+        await supabase
+          .from('user_stats')
+          .upsert({
+            user_id: authId,
+            total_coins: guestStats.total_coins,
+            current_streak: guestStats.current_streak,
+            longest_streak: guestStats.longest_streak,
+            total_focus_time: guestStats.total_focus_time,
+            total_sessions: guestStats.total_sessions,
+            total_sprints: guestStats.total_sprints,
+            attributes: guestStats.attributes,
+          });
+      }
+
+      // 2. Migrate tasks
+      await supabase
+        .from('tasks')
+        .update({ user_id: authId })
+        .eq('user_id', guestId);
+
+      // 3. Migrate habits
+      await supabase
+        .from('habits')
+        .update({ user_id: authId })
+        .eq('user_id', guestId);
+
+      // 4. Migrate habit_completions
+      await supabase
+        .from('habit_completions')
+        .update({ user_id: authId })
+        .eq('user_id', guestId);
+
+      // 5. Migrate focus_sessions
+      await supabase
+        .from('focus_sessions')
+        .update({ user_id: authId })
+        .eq('user_id', guestId);
+
+      console.log('✅ Migration complete');
+    } catch (error) {
+      console.error('Error migrating guest data:', error);
+    }
+  };
+
   useEffect(() => {
     loadStats();
   }, []);
@@ -364,5 +441,7 @@ export const useUserStats = () => {
     checkLevelUp,
     levelUpCharacter,
     rewardEngine, // Export for UI use
+    migrateGuestToAuth, // Export for auth migration
+    getUserId, // Export for external use
   };
 };
