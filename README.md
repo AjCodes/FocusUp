@@ -85,31 +85,40 @@ utils/               # Helper functions
 If you want to run this project locally, follow these steps:
 
 1️⃣ Install Dependencies
+```
 npm install
+
+```
 
 2️⃣ Add Your Supabase Keys
 
 Create a .env file in the root directory:
 
+```
 EXPO_PUBLIC_SUPABASE_URL=your-url
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 
+```
 
 (You can find these in your Supabase Project → Settings → API tab)
 
 ⚠️ Note: Never commit your .env file. Add it to .gitignore first.
 
 3️⃣ Run the App
+
+```
+
 npm start
 
+```
 
 Then press:
 
-a → Android
+- a → Android
 
-i → iOS
+- i → iOS
 
-w → Web
+- w → Web
 
 🧰 Database Setup
 
