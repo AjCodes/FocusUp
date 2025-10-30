@@ -80,25 +80,26 @@ lib/
 utils/               # Helper functions
 ```
 
-## 🚀 Setup Instructions
+🚀 Setup Instructions
 
-If you want to run this project locally:
+If you want to run this project locally, follow these steps:
 
-1️⃣ Install dependencies
-
+1️⃣ Install Dependencies
 npm install
 
+2️⃣ Add Your Supabase Keys
 
-2️⃣ Add your Supabase keys
-
-Create a .env file in the root:
+Create a .env file in the root directory:
 
 EXPO_PUBLIC_SUPABASE_URL=your-url
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 
 
-3️⃣ Run the app
+(You can find these in your Supabase Project → Settings → API tab)
 
+⚠️ Note: Never commit your .env file. Add it to .gitignore first.
+
+3️⃣ Run the App
 npm start
 
 
@@ -110,22 +111,33 @@ i → iOS
 
 w → Web
 
-🧰 Database
+🧰 Database Setup
 
-The Supabase schema includes:
+The Supabase schema includes the following tables:
 
-tasks, habits, habit_completions, focus_sessions, user_stats
+Core Tables
 
-Reward-tracking tables (daily_tracking, reward_events, etc.)
+tasks – To-do items
 
-RLS policies, foreign keys, and timestamps
+habits – Daily habits
 
-Full schema: supabase-setup.sql
+habit_completions – Daily check-ins
 
+focus_sessions – Pomodoro session logs
+
+user_stats – XP, coins, levels, streaks
+
+Reward Tracking
+
+daily_tracking, reward_events, etc.
+
+Includes RLS policies, foreign keys, and performance indexes
+
+Full schema available in supabase-setup.sql
 
 ---
 
-## 🎮 Reward System (v2 - No Limits!)
+## 🎮 Reward System 
 
 **Core Principle:** Never limit productivity. Use smart scaling instead.
 
