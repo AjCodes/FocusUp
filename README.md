@@ -1,23 +1,43 @@
-# 🎯 FocusUp - Gamified Pomodoro App
+# 🎯 FocusUp - Level Up Your Focus
 
-A mobile productivity app I built for my final project. It's basically a Pomodoro timer mixed with RPG game mechanics - you earn XP and level up by completing tasks and staying focused. Made with React Native.
+FocusUp is my personal take on productivity. I wanted to stop treating focus like a chore and turn it into a game — so I built a Pomodoro app where every task, habit, and work session earns you XP, levels, and coins. It’s a mix between Atomic Habits and RuneScape — built for people who want to grind in real life.
 
 ---
 
-## ✨ What it does
+## ✨ Why I Built It
 
-The app helps you stay focused using the Pomodoro technique (25-min work sessions) but makes it fun by adding game elements:
+This project started as my ICT semester project, but it quickly became something bigger. I was motivated to create an application that i would use daily to work on my tasks and habits
+So I asked myself: What if daily habits/tasks felt like leveling up a character instead of checking off a list?
 
-- ⏱️ **Timer** - Standard Pomodoro timer with work/break cycles
+That idea turned into FocusUp — a gamified Pomodoro system that tracks your habits, rewards consistency, and visualizes your growth.
+
+## ⚙️ Core Features
+
+- ⏱️ **Pomodoro Timer** - Standard Pomodoro timer with work/break cycles
 - ✅ **Tasks** - A to-do list where each task is like a "quest"
-- 🎯 **Habits** - Daily habits you can track (like going to the gym or studying)
-- 📈 **Leveling System** - You gain XP and level up in 4 categories: Physical, Cognitive, Heart, and Soul
+- 🎯 **Habits** - Daily habits you can track and accumulates streaks
+- 📈 **Leveling System** - You gain XP in one of the 4 categories: Physical, Cognitive, Heart, and Soul
 - 💰 **Coins & Streaks** - Earn rewards for completing sessions and maintain daily streaks
 - 📱 **Works Offline** - Saves everything locally so you can use it without internet
-
-The interface uses a dark theme with a glass effect that I thought looked pretty cool.
+- 🎨 Dark Glass UI — Minimal, clean, slightly futuristic vibe
 
 ---
+
+## 🧠 Reward System
+
+No limits. No arbitrary caps. Just smart scaling.
+
+- The more you do, the smaller the XP returns — but never zero.
+
+- Working during focus sessions gives 2× rewards
+
+- Outside sessions = 0.5×
+
+- Anti-spam logic prevents easy farming
+
+- Levels follow an exponential XP curve — 1 to 99, RuneScape style
+
+Every level means something. You earn it.
 
 ## 🛠️ Tech Stack
 
@@ -25,64 +45,10 @@ Here's what I used to build it:
 
 - ⚛️ React Native with Expo (version 54)
 - 📘 TypeScript for type safety
-- 🗄️ Supabase as the backend (free tier)
+- 🗄️ Supabase as the backend 
 - 🔄 Zustand for state management
 - 💾 AsyncStorage for offline functionality
 - 🧭 Expo Router for navigation
-
----
-
-## 🚀 Setup Instructions
-
-If you want to run this project locally:
-
-### 1️⃣ Install dependencies
-
-```bash
-npm install
-```
-
-### 2️⃣ Database Setup
-
-The database schema is already set up in Supabase with these tables:
-
-**Core Tables:**
-- `tasks` - User's to-do items with priority levels
-- `habits` - Daily habits with attribute assignments
-- `habit_completions` - Daily habit check-ins
-- `focus_sessions` - Pomodoro session history
-- `user_stats` - User progress (coins, XP, character level, streaks)
-
-**Reward System Tables:**
-- `daily_tracking` - Tracks daily counts for diminishing returns
-- `session_verifications` - Anti-cheat verification records
-- `reward_events` - Complete audit log of all rewards
-
-All tables have proper indexes, constraints, and Row Level Security policies.
-
-### 3️⃣ Environment Variables
-
-Create a `.env` file in the root directory:
-
-```env
-EXPO_PUBLIC_SUPABASE_URL=your-project-url-here
-EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
-```
-
-Get these values from your Supabase project settings under API.
-
-**⚠️ Important:** Don't commit the `.env` file! Add it to `.gitignore`.
-
-### 4️⃣ Run the app
-
-```bash
-npm start
-```
-
-Then press:
-- `i` for iOS simulator
-- `a` for Android emulator
-- `w` for web browser
 
 ---
 
@@ -114,6 +80,49 @@ lib/
 utils/               # Helper functions
 ```
 
+## 🚀 Setup Instructions
+
+If you want to run this project locally:
+
+1️⃣ Install dependencies
+
+npm install
+
+
+2️⃣ Add your Supabase keys
+
+Create a .env file in the root:
+
+EXPO_PUBLIC_SUPABASE_URL=your-url
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+
+
+3️⃣ Run the app
+
+npm start
+
+
+Then press:
+
+a → Android
+
+i → iOS
+
+w → Web
+
+🧰 Database
+
+The Supabase schema includes:
+
+tasks, habits, habit_completions, focus_sessions, user_stats
+
+Reward-tracking tables (daily_tracking, reward_events, etc.)
+
+RLS policies, foreign keys, and timestamps
+
+Full schema: supabase-setup.sql
+
+
 ---
 
 ## 🎮 Reward System (v2 - No Limits!)
@@ -135,42 +144,6 @@ utils/               # Helper functions
 - Every reward feels earned
 
 See `src/features/rewards/` for implementation details.
-
----
-
-## 🎨 Features I Implemented
-
-### ❌ Error Handling
-I added toast notifications so users get friendly error messages instead of the app just crashing. Also made it so if the database fails, everything saves locally instead.
-
-### ✔️ Validation
-Added input validation for forms - character limits, required fields, etc. The UI shows red borders when something's wrong.
-
-### ⏳ Loading States
-Added loading spinners and disabled buttons during operations so users know when something's processing.
-
-### 🗃️ Database
-Set up proper database schema with:
-- Row Level Security policies
-- Foreign key relationships
-- Indexes for better performance
-- Auto-updating timestamps
-
----
-
-## 🐛 Common Problems I Ran Into
-
-**Problem:** "Supabase is not configured"
-- **Fix:** Make sure the `.env` file exists and restart the dev server with `expo start -c` to clear cache
-
-**Problem:** Can't add tasks/habits
-- **Fix:** Check if Row Level Security is blocking you. In Supabase, you can temporarily disable it for testing:
-  ```sql
-  ALTER TABLE tasks DISABLE ROW LEVEL SECURITY;
-  ```
-
-**Problem:** Data not syncing between devices
-- **Fix:** This only works if you're signed in with Google. Guest mode only saves locally.
 
 ---
 
@@ -196,30 +169,6 @@ If I had more time, I'd add:
 - 🎨 More customization options for the timer
 - ❤️ Apple Health / Google Fit integration
 - ✨ Better animations
-
----
-
-## 🚢 Running in Production
-
-I haven't deployed it yet, but the plan is to use EAS Build:
-
-```bash
-eas build --platform android
-```
-
----
-
-## 📊 Database Tables
-
-Quick overview of the schema:
-
-- **tasks** - User's to-do items
-- **habits** - Repeating daily habits
-- **habit_completions** - Tracks which habits were done each day
-- **focus_sessions** - History of all Pomodoro sessions
-- **user_stats** - User's level, coins, streaks, total focus time
-
-Full schema is in `supabase-setup.sql`.
 
 ---
 
