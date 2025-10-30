@@ -389,6 +389,16 @@ export default function Focus() {
     }
     const nextMode = mode === 'focus' ? 'break' : 'focus';
     setMode(nextMode);
+    // Update timer to the new mode's duration
+    const newDuration = nextMode === 'focus' ? workDuration : breakDuration;
+    setSeconds(newDuration);
+    // Reset progress animation
+    progressAnimation.stopAnimation();
+    progressAnimation.setValue(0);
+    // Stop the timer if it's running
+    if (pomodoro.running) {
+      pomodoro.pause();
+    }
   };
 
   const handleTimerSettingsSave = (work: number, breakTime: number) => {
@@ -811,11 +821,21 @@ export default function Focus() {
         visible={showAddTask}
         onClose={() => setShowAddTask(false)}
         onAdd={handleAddTask}
+        onSelect={(task) => {
+          setLinkedTask(task);
+          setShowAddTask(false);
+        }}
+        existingTasks={tasks}
       />
       <AddHabitModal
         visible={showAddHabit}
         onClose={() => setShowAddHabit(false)}
         onAdd={handleAddHabit}
+        onSelect={(habit) => {
+          setLinkedHabit(habit);
+          setShowAddHabit(false);
+        }}
+        existingHabits={habits}
       />
       <TimerSettingsModal
         visible={showTimerSettings}

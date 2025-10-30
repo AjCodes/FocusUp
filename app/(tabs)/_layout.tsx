@@ -18,7 +18,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   };
 
-  const visibleRoutes = state.routes.filter((route: any) => route.name !== 'profile');
+  const visibleRoutes = state.routes.filter((route: any) => route.name !== 'profile' && route.name !== 'settings');
   const activeRouteKey = state.routes[state.index]?.key;
   const focusedVisibleIndex = visibleRoutes.findIndex((route: any) => route.key === activeRouteKey);
 
@@ -157,6 +157,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="focus" options={{ title: 'Focus' }} />
         <Tabs.Screen name="habits" options={{ title: 'Habits' }} />
         <Tabs.Screen name="profile" options={{ title: 'Profile', href: null }} />
+        <Tabs.Screen name="settings" options={{ title: 'Settings', href: null }} />
       </Tabs>
     </AuthGate>
   );

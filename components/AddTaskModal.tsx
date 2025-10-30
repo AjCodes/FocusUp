@@ -1,21 +1,42 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, Modal } from 'react-native';
+import { View, Text, TextInput, Pressable, Modal, ScrollView, StyleSheet } from 'react-native';
 import { useTheme } from './ThemeProvider';
 import { GlassCard } from './GlassCard';
 import { validateTaskTitle, validateNotes, sanitizeText } from '../utils/validation';
 import { REWARDS, VALIDATION } from '../src/constants/app';
+import { Ionicons } from '@expo/vector-icons';
+
+interface Task {
+  id: string;
+  title: string;
+  notes?: string;
+  done?: boolean;
+  priority?: 'low' | 'medium' | 'high';
+}
 
 interface AddTaskModalProps {
   visible: boolean;
   onClose: () => void;
   onAdd: (title: string, notes?: string) => void;
+  onSelect?: (task: Task) => void;
+  existingTasks?: Task[];
 }
 
-export const AddTaskModal: React.FC<AddTaskModalProps> = ({ visible, onClose, onAdd }) => {
+export const AddTaskModal: React.FC<AddTaskModalProps> = ({
+  visible,
+  onClose,
+  onAdd,
+  onSelect,
+  existingTasks = []
+}) => {
   const { colors } = useTheme();
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [errors, setErrors] = useState({ title: '', notes: '' });
+  const [activeTab, setActiveTab] = useState<'select' | 'create'>('select');
+
+  // Filter out completed tasks and show only incomplete ones
+  const incompleteTasks = existingTasks.filter(task => !task.done);
 
   const handleAdd = () => {
     // Clear previous errors
@@ -53,7 +74,33 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ visible, onClose, on
     setTitle('');
     setNotes('');
     setErrors({ title: '', notes: '' });
+    setActiveTab('select');
     onClose();
+  };
+
+  const handleSelectTask = (task: Task) => {
+    if (onSelect) {
+      onSelect(task);
+    }
+    handleClose();
+  };
+
+  const getPriorityColor = (priority?: string) => {
+    switch (priority) {
+      case 'high': return '#EF4444';
+      case 'medium': return '#F59E0B';
+      case 'low': return '#10B981';
+      default: return colors.textSecondary;
+    }
+  };
+
+  const getPriorityIcon = (priority?: string) => {
+    switch (priority) {
+      case 'high': return 'arrow-up-circle';
+      case 'medium': return 'remove-circle';
+      case 'low': return 'arrow-down-circle';
+      default: return 'ellipse-outline';
+    }
   };
 
   return (
@@ -61,25 +108,149 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ visible, onClose, on
       visible={visible}
       transparent={true}
       animationType="slide"
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
-      <View style={{
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 20,
-      }}>
-        <GlassCard style={{ width: '100%', maxWidth: 400 }}>
+      <Pressable
+        style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 20,
+        }}
+        onPress={handleClose}
+      >
+        <Pressable onPress={(e) => e.stopPropagation()}>
+          <GlassCard style={{ width: 400, maxWidth: '100%' }}>
           <Text style={{
             color: colors.text,
             fontSize: 20,
             fontWeight: 'bold',
-            marginBottom: 20,
+            marginBottom: 16,
             textAlign: 'center',
           }}>
-            Add a new quest
+            Link a Quest
           </Text>
+
+          {/* Tab Switcher */}
+          <View style={styles.tabContainer}>
+            <Pressable
+              onPress={() => setActiveTab('select')}
+              style={[
+                styles.tab,
+                activeTab === 'select' && { backgroundColor: colors.primary }
+              ]}
+            >
+              <Text style={[
+                styles.tabText,
+                { color: activeTab === 'select' ? colors.background : colors.textSecondary }
+              ]}>
+                Select Existing
+              </Text>
+              {incompleteTasks.length > 0 && (
+                <View style={[styles.badge, { backgroundColor: activeTab === 'select' ? colors.background : colors.primary }]}>
+                  <Text style={[styles.badgeText, { color: activeTab === 'select' ? colors.primary : colors.background }]}>
+                    {incompleteTasks.length}
+                  </Text>
+                </View>
+              )}
+            </Pressable>
+            <Pressable
+              onPress={() => setActiveTab('create')}
+              style={[
+                styles.tab,
+                activeTab === 'create' && { backgroundColor: colors.primary }
+              ]}
+            >
+              <Text style={[
+                styles.tabText,
+                { color: activeTab === 'create' ? colors.background : colors.textSecondary }
+              ]}>
+                Create New
+              </Text>
+            </Pressable>
+          </View>
+
+          {/* Select Existing Tab */}
+          {activeTab === 'select' && (
+            <View>
+              {incompleteTasks.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="clipboard-outline" size={48} color={colors.textSecondary} />
+                  <Text style={{ color: colors.textSecondary, marginTop: 12, textAlign: 'center' }}>
+                    No tasks available
+                  </Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4, textAlign: 'center' }}>
+                    Create a new task or add some from the Tasks tab
+                  </Text>
+                  <Pressable
+                    onPress={() => setActiveTab('create')}
+                    style={{ marginTop: 16, paddingVertical: 8, paddingHorizontal: 16, backgroundColor: colors.primary, borderRadius: 8 }}
+                  >
+                    <Text style={{ color: colors.background, fontWeight: '600' }}>Create New Task</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View>
+                  <ScrollView style={styles.taskList} showsVerticalScrollIndicator={false}>
+                  {incompleteTasks.map((task) => (
+                    <Pressable
+                      key={task.id}
+                      onPress={() => handleSelectTask(task)}
+                      style={({ pressed }) => [
+                        styles.taskItem,
+                        {
+                          backgroundColor: pressed ? colors.primary + '20' : colors.cardBackground,
+                          borderColor: colors.primary + '40',
+                        }
+                      ]}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                          <Ionicons
+                            name={getPriorityIcon(task.priority) as any}
+                            size={16}
+                            color={getPriorityColor(task.priority)}
+                            style={{ marginRight: 8 }}
+                          />
+                          <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600', flex: 1 }}>
+                            {task.title}
+                          </Text>
+                        </View>
+                        {task.notes && (
+                          <Text
+                            style={{ color: colors.textSecondary, fontSize: 12 }}
+                            numberOfLines={1}
+                          >
+                            {task.notes}
+                          </Text>
+                        )}
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+                    </Pressable>
+                  ))}
+                </ScrollView>
+                </View>
+              )}
+
+              <Pressable
+                onPress={handleClose}
+                style={{
+                  backgroundColor: colors.cardBackground,
+                  paddingVertical: 12,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                  marginTop: 16,
+                }}
+              >
+                <Text style={{ color: colors.text, fontWeight: '600' }}>Cancel</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {/* Create New Tab */}
+          {activeTab === 'create' && (
+            <View>
 
           <Text style={{ color: colors.textSecondary, marginBottom: 8 }}>
             What needs your attention?
@@ -176,21 +347,64 @@ export const AddTaskModal: React.FC<AddTaskModalProps> = ({ visible, onClose, on
             </Pressable>
           </View>
 
-          <View style={{
-            position: 'absolute',
-            top: 16,
-            right: 16,
-            backgroundColor: colors.warning,
-            paddingHorizontal: 8,
-            paddingVertical: 4,
-            borderRadius: 12,
-          }}>
-            <Text style={{ color: colors.background, fontSize: 12, fontWeight: '600' }}>
-              +{REWARDS.TASK_ADD} coins
-            </Text>
-          </View>
+            </View>
+          )}
         </GlassCard>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 };
+
+const styles = StyleSheet.create({
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(30, 41, 59, 0.5)',
+    borderRadius: 8,
+    padding: 4,
+    marginBottom: 16,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  badge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  emptyState: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  taskList: {
+    maxHeight: 300,
+    marginBottom: 8,
+  },
+  taskItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+  },
+});

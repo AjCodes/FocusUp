@@ -128,6 +128,38 @@ export function useAuth() {
     return await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo } });
   }, []);
 
+  const signUpWithEmail = useCallback(async (email: string, password: string, fullName: string) => {
+    if (!supabase) return { error: new Error('Supabase not initialized') };
+
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: fullName,
+        },
+      },
+    });
+
+    if (error) return { error };
+
+    return { data, error: null };
+  }, []);
+
+  const signInWithEmail = useCallback(async (email: string, password: string) => {
+    if (!supabase) return { error: new Error('Supabase not initialized') };
+
+    return await supabase.auth.signInWithPassword({ email, password });
+  }, []);
+
+  const resetPassword = useCallback(async (email: string) => {
+    if (!supabase) return { error: new Error('Supabase not initialized') };
+
+    return await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: 'focusup://reset-password',
+    });
+  }, []);
+
   const signOut = useCallback(async () => {
     if (supabase) {
       await supabase.auth.signOut();
@@ -148,7 +180,18 @@ export function useAuth() {
 
   const isAuthenticated = !!session || guest;
 
-  return { session, isLoading, signInWithGoogle, signOut, continueAsGuest, isAuthenticated, guest };
+  return {
+    session,
+    isLoading,
+    signInWithGoogle,
+    signInWithEmail,
+    signUpWithEmail,
+    resetPassword,
+    signOut,
+    continueAsGuest,
+    isAuthenticated,
+    guest
+  };
 }
 
 

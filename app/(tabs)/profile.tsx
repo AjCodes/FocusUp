@@ -118,7 +118,19 @@ export default function Profile() {
         <Text style={{ color: colors.text, fontSize: 20, fontWeight: 'bold' }}>
           Character Dashboard
         </Text>
-        <View style={{ width: 44 }} />
+        <Pressable
+          onPress={() => router.push('/(tabs)/settings' as any)}
+          style={{
+            backgroundColor: 'rgba(59, 130, 246, 0.15)',
+            borderRadius: 20,
+            width: 44,
+            height: 44,
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          <Ionicons name="settings-outline" size={24} color={colors.primary} />
+        </Pressable>
       </View>
 
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
