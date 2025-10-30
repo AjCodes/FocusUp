@@ -1,0 +1,3 @@
+const FOCUS_ATTRIBUTES = {
+  PH: { label: 'Physical', emoji: 'ðŸ’ª', color: '#10B981', description: "Your body's energy and health" },
+  CO: { label: 'Cognitive', emoji: 'ðŸ§ ', color: '#3B82F6', de

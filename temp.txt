@@ -1,0 +1,172 @@
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+import { UserStats } from '../types/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const USER_ID_KEY = 'focusup-user-id';
+
+export const useUserStats = () => {
+  const [userStats, setUserStats] = useState<UserStats>({
+    id: '',
+    user_id: '',
+    total_coins: 40, // Starting coins
+    current_streak: 0,
+    longest_streak: 0,
+    total_focus_time: 0,
+    total_sessions: 0,
+    updated_at: new Date().toISOString(),
+  });
+  const [loading, setLoading] = useState(true);
+
+  // Get or create user ID
+  const getUserId = async (): Promise<string> => {
+    let userId = await AsyncStorage.getItem(USER_ID_KEY);
+    if (!userId) {
+      userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      await AsyncStorage.setItem(USER_ID_KEY, userId);
+    }
+    return userId;
+  };
+
+  // Load user stats
+  const loadStats = async () => {
+    try {
+      const userId = await getUserId();
+      
+      if (!supabase) {
+        // Fallback to local storage if no Supabase
+        const localStats = await AsyncStorage.getItem(`user-stats-${userId}`);
+        if (localStats) {
+          setUserStats(JSON.parse(localStats));
+        }
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('user_stats')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      if (error && error.code === 'PGRST116') {
+        // User stats don't exist, create them
+        const { data: newStats, error: insertError } = await supabase
+          .from('user_stats')
+          .insert({
+            user_id: userId,
+            total_coins: 40,
+            current_streak: 0,
+            longest_streak: 0,
+            total_focus_time: 0,
+            total_sessions: 0,
+          })
+          .select()
+          .single();
+
+        if (!insertError && newStats) {
+          setUserStats(newStats);
+        }
+      } else if (!error && data) {
+        setUserStats(data);
+      }
+
+      // Also save to local storage as backup
+      await AsyncStorage.setItem(`user-stats-${userId}`, JSON.stringify(userStats));
+    } catch (error) {
+      console.error('Error loading user stats:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Add coins
+  const addCoins = async (amount: number) => {
+    const newTotal = userStats.total_coins + amount;
+    const updatedStats = { ...userStats, total_coins: newTotal };
+    setUserStats(updatedStats);
+
+    try {
+      const userId = await getUserId();
+      await AsyncStorage.setItem(`user-stats-${userId}`, JSON.stringify(updatedStats));
+
+      if (supabase) {
+        await supabase
+          .from('user_stats')
+          .update({ total_coins: newTotal })
+          .eq('user_id', userId);
+      }
+    } catch (error) {
+      console.error('Error updating coins:', error);
+    }
+  };
+
+  // Update streak
+  const updateStreak = async (newStreak: number) => {
+    const longestStreak = Math.max(userStats.longest_streak, newStreak);
+    const updatedStats = { 
+      ...userStats, 
+      current_streak: newStreak,
+      longest_streak: longestStreak,
+    };
+    setUserStats(updatedStats);
+
+    try {
+      const userId = await getUserId();
+      await AsyncStorage.setItem(`user-stats-${userId}`, JSON.stringify(updatedStats));
+
+      if (supabase) {
+        await supabase
+          .from('user_stats')
+          .update({ 
+            current_streak: newStreak,
+            longest_streak: longestStreak,
+          })
+          .eq('user_id', userId);
+      }
+    } catch (error) {
+      console.error('Error updating streak:', error);
+    }
+  };
+
+  // Add focus session
+  const addFocusSession = async (duration: number) => {
+    const updatedStats = {
+      ...userStats,
+      total_focus_time: userStats.total_focus_time + duration,
+      total_sessions: userStats.total_sessions + 1,
+    };
+    setUserStats(updatedStats);
+
+    try {
+      const userId = await getUserId();
+      await AsyncStorage.setItem(`user-stats-${userId}`, JSON.stringify(updatedStats));
+
+      if (supabase) {
+        await supabase
+          .from('user_stats')
+          .update({ 
+            total_focus_time: updatedStats.total_focus_time,
+            total_sessions: updatedStats.total_sessions,
+          })
+          .eq('user_id', userId);
+      }
+    } catch (error) {
+      console.error('Error updating focus session:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadStats();
+  }, []);
+
+  return {
+    userStats,
+    loading,
+    addCoins,
+    updateStreak,
+    addFocusSession,
+    refetch: loadStats,
+  };
+};
+
