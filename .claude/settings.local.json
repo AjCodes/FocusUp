@@ -11,7 +11,8 @@
       "Bash(npx expo install expo-file-system expo-sharing expo-linear-gradient)",
       "WebSearch",
       "WebFetch(domain:supabase.com)",
-      "Bash(npx expo config:*)"
+      "Bash(npx expo config:*)",
+      "Bash(dir:*)"
     ],
     "deny": [],
     "ask": []

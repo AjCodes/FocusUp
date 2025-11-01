@@ -215,21 +215,7 @@ export default function Settings() {
             <Ionicons name="chevron-back" size={24} color={colors.primary} />
           </Pressable>
           <Text style={[styles.headerText, { color: colors.text }]}>Settings</Text>
-          <Pressable
-            onPress={() => router.push('/(tabs)/profile')}
-            style={{
-              backgroundColor: 'rgba(59, 130, 246, 0.15)',
-              borderRadius: 20,
-              width: 44,
-              height: 44,
-              justifyContent: 'center',
-              alignItems: 'center',
-              borderWidth: 1,
-              borderColor: colors.primary + '40',
-            }}
-          >
-            <Ionicons name="person-outline" size={22} color={colors.primary} />
-          </Pressable>
+          <View style={{ width: 44 }} />
         </View>
       </View>
 
@@ -238,29 +224,6 @@ export default function Settings() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 20 }}
       >
-
-      {/* Account Section */}
-      <SettingsSection title="Account" icon="person-outline">
-        <SettingsItem
-          label="Profile"
-          value={session?.user?.email || guest ? 'Guest User' : 'Not signed in'}
-          onPress={() => router.push('/(tabs)/profile')}
-        />
-        {session && !guest && (
-          <>
-            <SettingsItem
-              label="Email"
-              value={session.user.email || ''}
-            />
-            <SettingsItem
-              label="Change Password"
-              onPress={() => {
-                Alert.alert('Coming Soon', 'Password change feature will be available soon.');
-              }}
-            />
-          </>
-        )}
-      </SettingsSection>
 
       {/* Data & Storage Section */}
       <SettingsSection title="Data & Storage" icon="cloud-outline">

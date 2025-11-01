@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   Animated,
   StyleSheet,
+  Image,
+  Alert,
 } from 'react-native';
 import { useAuth } from '../../src/features/auth/useAuth';
 import { useRouter } from 'expo-router';
@@ -160,10 +162,7 @@ export default function Login() {
   };
 
   return (
-    <LinearGradient
-      colors={['#0A0F1C', '#1E293B', '#0A0F1C']}
-      style={styles.container}
-    >
+    <View style={styles.container}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
@@ -171,6 +170,7 @@ export default function Login() {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
           {/* Already Authenticated Prompt */}
           {showSignOutPrompt && (
@@ -225,17 +225,31 @@ export default function Login() {
               },
             ]}
           >
-            {/* Logo/Icon */}
-            <View style={styles.logoContainer}>
-              <View style={styles.logoCircle}>
-                <Ionicons name="timer-outline" size={48} color="#3B82F6" />
+            {/* Header with Gradient Background */}
+            <LinearGradient
+              colors={['#6366F1', '#8B5CF6', '#A855F7']}
+              style={styles.headerGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <View style={styles.logoContainer}>
+                <Image
+                  source={require('../../assets/logo.png')}
+                  style={styles.logo}
+                  resizeMode="contain"
+                />
+                <Text style={styles.logoText}>FocusUp</Text>
+                <Text style={styles.tagline}>Craft your day, shape your life</Text>
               </View>
-              <Text style={styles.logoText}>FocusUp</Text>
-              <Text style={styles.tagline}>Craft your day, shape your life</Text>
-            </View>
+            </LinearGradient>
 
-            {/* Email/Password Form */}
-            <View style={styles.formContainer}>
+            {/* White Card with Form */}
+            <View style={styles.formCard}>
+              <Text style={styles.welcomeTitle}>Welcome Back</Text>
+              <Text style={styles.welcomeSubtitle}>Enter your details below</Text>
+
+              {/* Email/Password Form */}
+              <View style={styles.formContainer}>
               {/* Email Input */}
               <View style={styles.inputWrapper}>
                 <Ionicons name="mail-outline" size={20} color="#CBD5E1" style={styles.inputIcon} />
@@ -292,105 +306,146 @@ export default function Login() {
               ) : null}
 
               {/* Sign In Button */}
-              <Pressable
-                onPress={handleEmailSignIn}
-                disabled={loading}
-                style={({ pressed }) => [
-                  styles.primaryButton,
-                  pressed && styles.buttonPressed,
-                ]}
+              <LinearGradient
+                colors={['#6366F1', '#8B5CF6', '#A855F7']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.primaryButton}
               >
-                {loading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.primaryButtonText}>Sign In</Text>
-                )}
+                <Pressable
+                  onPress={handleEmailSignIn}
+                  disabled={loading}
+                  style={({ pressed }) => [
+                    styles.primaryButtonInner,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.primaryButtonText}>Sign in</Text>
+                  )}
+                </Pressable>
+              </LinearGradient>
+            </View>
+
+              {/* Divider */}
+              <View style={styles.divider}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>Or sign in with</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              {/* Social Login Buttons */}
+              <View style={styles.socialButtonsContainer}>
+                <Pressable
+                  onPress={handleGoogleSignIn}
+                  disabled={loading}
+                  style={({ pressed }) => [
+                    styles.socialButton,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  <Ionicons name="logo-google" size={20} color="#DB4437" />
+                  <Text style={styles.socialButtonText}>Google</Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => Alert.alert('Coming Soon', 'Facebook login will be available soon.')}
+                  style={({ pressed }) => [
+                    styles.socialButton,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  <Ionicons name="logo-facebook" size={20} color="#1877F2" />
+                  <Text style={styles.socialButtonText}>Facebook</Text>
+                </Pressable>
+              </View>
+
+              {/* Create Account Link */}
+              <View style={styles.signupPrompt}>
+                <Text style={styles.signupText}>Don't have an account? </Text>
+                <Pressable onPress={() => router.push('/(auth)/register' as any)}>
+                  <Text style={styles.signupLink}>Get Started</Text>
+                </Pressable>
+              </View>
+
+              {/* Guest Access */}
+              <Pressable
+                onPress={handleGuestContinue}
+                disabled={loading}
+                style={styles.guestButton}
+              >
+                <Text style={styles.guestButtonText}>Continue as Guest</Text>
               </Pressable>
             </View>
-
-            {/* Divider */}
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>OR</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            {/* Social Login */}
-            <Pressable
-              onPress={handleGoogleSignIn}
-              disabled={loading}
-              style={({ pressed }) => [
-                styles.googleButton,
-                pressed && styles.buttonPressed,
-              ]}
-            >
-              <Ionicons name="logo-google" size={20} color="#1F2937" />
-              <Text style={styles.googleButtonText}>Continue with Google</Text>
-            </Pressable>
-
-            {/* Create Account */}
-            <Pressable
-              onPress={() => router.push('/(auth)/register' as any)}
-              style={({ pressed }) => [
-                styles.secondaryButton,
-                pressed && styles.buttonPressed,
-              ]}
-            >
-              <Text style={styles.secondaryButtonText}>Create Account</Text>
-            </Pressable>
-
-            {/* Guest Access */}
-            <Pressable
-              onPress={handleGuestContinue}
-              disabled={loading}
-              style={styles.guestButton}
-            >
-              <Text style={styles.guestButtonText}>Continue as Guest</Text>
-              <Text style={styles.guestSubtext}>Limited features, data not synced</Text>
-            </Pressable>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#F8FAFC',
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
-    padding: 24,
   },
   content: {
-    width: '100%',
-    maxWidth: 400,
-    alignSelf: 'center',
+    flex: 1,
+  },
+  headerGradient: {
+    paddingTop: 60,
+    paddingBottom: 40,
+    paddingHorizontal: 24,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 40,
   },
-  logoCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(59, 130, 246, 0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  logo: {
+    width: 100,
+    height: 100,
     marginBottom: 16,
   },
   logoText: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#F8FAFC',
+    color: '#FFFFFF',
     marginBottom: 8,
   },
   tagline: {
-    fontSize: 16,
-    color: '#CBD5E1',
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.9)',
+    textAlign: 'center',
+  },
+  formCard: {
+    backgroundColor: '#FFFFFF',
+    margin: 24,
+    marginTop: -20,
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  welcomeTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  welcomeSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 24,
     textAlign: 'center',
   },
   formContainer: {
@@ -399,32 +454,34 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+    backgroundColor: '#F9FAFB',
     borderRadius: 12,
     marginBottom: 16,
     paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.2)',
+    borderColor: '#E5E7EB',
   },
   inputIcon: {
     marginRight: 12,
+    color: '#9CA3AF',
   },
   input: {
     flex: 1,
-    color: '#F8FAFC',
+    color: '#1F2937',
     fontSize: 16,
-    paddingVertical: 16,
+    paddingVertical: 14,
   },
   eyeIcon: {
     padding: 8,
   },
   forgotPassword: {
     alignSelf: 'flex-end',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   forgotPasswordText: {
-    color: '#60A5FA',
+    color: '#6366F1',
     fontSize: 14,
+    fontWeight: '500',
   },
   errorContainer: {
     flexDirection: 'row',
@@ -441,79 +498,83 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   primaryButton: {
-    backgroundColor: '#3B82F6',
-    paddingVertical: 16,
     borderRadius: 12,
+    marginBottom: 20,
+    overflow: 'hidden',
+  },
+  primaryButtonInner: {
+    paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
   },
   primaryButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
   buttonPressed: {
     opacity: 0.8,
-    transform: [{ scale: 0.98 }],
   },
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 24,
+    marginVertical: 20,
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: 'rgba(148, 163, 184, 0.2)',
+    backgroundColor: '#E5E7EB',
   },
   dividerText: {
-    color: '#64748B',
-    fontSize: 14,
-    marginHorizontal: 16,
+    color: '#9CA3AF',
+    fontSize: 13,
+    marginHorizontal: 12,
   },
-  googleButton: {
-    backgroundColor: '#F8FAFC',
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+  socialButtonsContainer: {
     flexDirection: 'row',
-    marginBottom: 12,
+    gap: 12,
+    marginBottom: 20,
   },
-  googleButtonText: {
-    color: '#1F2937',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 8,
-  },
-  secondaryButton: {
-    backgroundColor: 'rgba(59, 130, 246, 0.15)',
-    paddingVertical: 16,
-    borderRadius: 12,
+  socialButton: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#F9FAFB',
+    paddingVertical: 14,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#3B82F6',
-    marginBottom: 24,
+    borderColor: '#E5E7EB',
+    gap: 8,
   },
-  secondaryButtonText: {
-    color: '#60A5FA',
-    fontSize: 16,
-    fontWeight: 'bold',
+  socialButtonText: {
+    color: '#1F2937',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  signupPrompt: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  signupText: {
+    color: '#6B7280',
+    fontSize: 14,
+  },
+  signupLink: {
+    color: '#6366F1',
+    fontSize: 14,
+    fontWeight: '600',
   },
   guestButton: {
     alignItems: 'center',
     paddingVertical: 12,
   },
   guestButtonText: {
-    color: '#94A3B8',
-    fontSize: 16,
-    marginBottom: 4,
-  },
-  guestSubtext: {
-    color: '#64748B',
-    fontSize: 12,
+    color: '#9CA3AF',
+    fontSize: 14,
+    fontWeight: '500',
   },
   alreadyAuthContainer: {
     flex: 1,

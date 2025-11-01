@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Animated,
   StyleSheet,
+  Image,
 } from 'react-native';
 import { useAuth } from '../../src/features/auth/useAuth';
 import { useRouter } from 'expo-router';
@@ -131,10 +132,7 @@ export default function Register() {
   };
 
   return (
-    <LinearGradient
-      colors={['#0A0F1C', '#1E293B', '#0A0F1C']}
-      style={styles.container}
-    >
+    <View style={styles.container}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
@@ -142,6 +140,7 @@ export default function Register() {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
           <Animated.View
             style={[
@@ -152,19 +151,36 @@ export default function Register() {
               },
             ]}
           >
-            {/* Header */}
-            <View style={styles.header}>
+            {/* Header with Gradient Background */}
+            <LinearGradient
+              colors={['#6366F1', '#8B5CF6', '#A855F7']}
+              style={styles.headerGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
               <Pressable
                 onPress={() => router.back()}
                 style={styles.backButton}
               >
-                <Ionicons name="arrow-back" size={24} color="#F8FAFC" />
+                <Ionicons name="arrow-back" size={24} color="#FFF" />
               </Pressable>
-              <Text style={styles.headerText}>Create Account</Text>
-            </View>
+              <View style={styles.logoContainer}>
+                <Image
+                  source={require('../../assets/logo.png')}
+                  style={styles.logo}
+                  resizeMode="contain"
+                />
+                <Text style={styles.logoText}>FocusUp</Text>
+              </View>
+            </LinearGradient>
 
-            {/* Form */}
-            <View style={styles.formContainer}>
+            {/* White Card with Form */}
+            <View style={styles.formCard}>
+              <Text style={styles.welcomeTitle}>Get started free.</Text>
+              <Text style={styles.welcomeSubtitle}>Free forever. No credit card needed.</Text>
+
+              {/* Form */}
+              <View style={styles.formContainer}>
               {/* Username */}
               <View style={styles.inputWrapper}>
                 <Ionicons name="person-outline" size={20} color="#CBD5E1" style={styles.inputIcon} />
@@ -298,20 +314,27 @@ export default function Register() {
               ) : null}
 
               {/* Create Account Button */}
-              <Pressable
-                onPress={handleRegister}
-                disabled={loading}
-                style={({ pressed }) => [
-                  styles.primaryButton,
-                  pressed && styles.buttonPressed,
-                ]}
+              <LinearGradient
+                colors={['#6366F1', '#8B5CF6', '#A855F7']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.primaryButton}
               >
-                {loading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.primaryButtonText}>Create Account</Text>
-                )}
-              </Pressable>
+                <Pressable
+                  onPress={handleRegister}
+                  disabled={loading}
+                  style={({ pressed }) => [
+                    styles.primaryButtonInner,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.primaryButtonText}>Sign up</Text>
+                  )}
+                </Pressable>
+              </LinearGradient>
 
               {/* Sign In Link */}
               <View style={styles.signInContainer}>
@@ -321,10 +344,11 @@ export default function Register() {
                 </Pressable>
               </View>
             </View>
+            </View>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -345,29 +369,64 @@ const RequirementItem = ({ met, text }: { met: boolean; text: string }) => (
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#F8FAFC',
   },
   scrollContent: {
     flexGrow: 1,
-    padding: 24,
-    paddingTop: 60,
   },
   content: {
-    width: '100%',
-    maxWidth: 400,
-    alignSelf: 'center',
+    flex: 1,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 40,
+  headerGradient: {
+    paddingTop: 60,
+    paddingBottom: 40,
+    paddingHorizontal: 24,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
   },
   backButton: {
-    marginRight: 16,
+    position: 'absolute',
+    top: 60,
+    left: 24,
+    zIndex: 10,
   },
-  headerText: {
+  logoContainer: {
+    alignItems: 'center',
+  },
+  logo: {
+    width: 80,
+    height: 80,
+    marginBottom: 12,
+  },
+  logoText: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#F8FAFC',
+    color: '#FFFFFF',
+  },
+  formCard: {
+    backgroundColor: '#FFFFFF',
+    margin: 24,
+    marginTop: -20,
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  welcomeTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  welcomeSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 24,
+    textAlign: 'center',
   },
   formContainer: {
     width: '100%',
@@ -375,21 +434,22 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+    backgroundColor: '#F9FAFB',
     borderRadius: 12,
     marginBottom: 16,
     paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.2)',
+    borderColor: '#E5E7EB',
   },
   inputIcon: {
     marginRight: 12,
+    color: '#9CA3AF',
   },
   input: {
     flex: 1,
-    color: '#F8FAFC',
+    color: '#1F2937',
     fontSize: 16,
-    paddingVertical: 16,
+    paddingVertical: 14,
   },
   eyeIcon: {
     padding: 8,
@@ -471,21 +531,22 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   primaryButton: {
-    backgroundColor: '#3B82F6',
-    paddingVertical: 16,
     borderRadius: 12,
+    marginBottom: 20,
+    overflow: 'hidden',
+  },
+  primaryButtonInner: {
+    paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
   },
   primaryButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
   buttonPressed: {
     opacity: 0.8,
-    transform: [{ scale: 0.98 }],
   },
   signInContainer: {
     flexDirection: 'row',
@@ -493,11 +554,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   signInText: {
-    color: '#94A3B8',
+    color: '#6B7280',
     fontSize: 14,
   },
   signInLink: {
-    color: '#60A5FA',
+    color: '#6366F1',
     fontSize: 14,
     fontWeight: '600',
   },
