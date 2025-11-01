@@ -1,8 +1,33 @@
 import { useEffect, useState, useCallback } from 'react';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
+import * as Linking from 'expo-linking';
 import { supabase } from '../../../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Complete auth session before component mounts - required for OAuth to work properly
+WebBrowser.maybeCompleteAuthSession();
+
+/**
+ * Helper function to extract OAuth tokens from callback URL
+ */
+const extractTokensFromUrl = (url: string): { access_token?: string; refresh_token?: string } => {
+  try {
+    // OAuth tokens can be in the hash fragment or query params
+    const hashMatch = url.match(/#(.+)/);
+    const queryMatch = url.match(/\?(.+)/);
+
+    const params = new URLSearchParams(hashMatch?.[1] || queryMatch?.[1] || '');
+
+    return {
+      access_token: params.get('access_token') || undefined,
+      refresh_token: params.get('refresh_token') || undefined,
+    };
+  } catch (error) {
+    console.error('❌ Error extracting tokens from URL:', error);
+    return {};
+  }
+};
 
 type Session = Awaited<ReturnType<NonNullable<typeof supabase>['auth']['getSession']>>['data']['session'];
 
@@ -79,6 +104,40 @@ export function useAuth() {
 
   const GUEST_KEY = 'focusup-guest-mode';
 
+  // Handle OAuth callback from deep link
+  const handleDeepLink = useCallback(async (url: string) => {
+    if (!supabase) return;
+
+    console.log('🔗 Deep link received:', url);
+
+    // Check if this is an OAuth callback URL
+    if (url.includes('access_token') || url.includes('refresh_token')) {
+      console.log('🔐 Processing OAuth callback...');
+
+      const { access_token, refresh_token } = extractTokensFromUrl(url);
+
+      if (access_token && refresh_token) {
+        try {
+          const { data, error } = await supabase.auth.setSession({
+            access_token,
+            refresh_token,
+          });
+
+          if (error) {
+            console.error('❌ Error setting session from deep link:', error);
+          } else {
+            console.log('✅ Session established from deep link:', data.user?.email);
+          }
+        } catch (err) {
+          console.error('❌ Exception setting session:', err);
+        }
+      } else {
+        console.error('❌ No tokens found in callback URL');
+      }
+    }
+  }, []);
+
+  // Initialize auth and set up deep link listeners
   useEffect(() => {
     if (!supabase) {
       // Load guest state even if supabase is not initialized
@@ -91,17 +150,35 @@ export function useAuth() {
       })();
       return;
     }
+
     let unsub: (() => void) | undefined;
+    let linkingSubscription: ReturnType<typeof Linking.addEventListener> | undefined;
+
     (async () => {
       // Load guest flag in parallel
       try {
         const flag = await AsyncStorage.getItem(GUEST_KEY);
         setGuest(flag === '1');
       } catch {}
+
+      // Check if app was opened via a deep link
+      const initialUrl = await Linking.getInitialURL();
+      if (initialUrl) {
+        console.log('📱 App opened with URL:', initialUrl);
+        await handleDeepLink(initialUrl);
+      }
+
+      // Listen for deep link events while app is running
+      linkingSubscription = Linking.addEventListener('url', (event) => {
+        handleDeepLink(event.url);
+      });
+
       const { data } = await supabase.auth.getSession();
       setSession(data.session);
       setIsLoading(false);
+
       const { data: listener } = supabase.auth.onAuthStateChange(async (event, sess) => {
+        console.log('🔔 Auth state changed:', event);
         setSession(sess);
 
         // If user just signed in, check if we need to migrate guest data
@@ -116,16 +193,93 @@ export function useAuth() {
       });
       unsub = () => listener.subscription.unsubscribe();
     })();
+
     return () => {
       if (unsub) unsub();
+      if (linkingSubscription) linkingSubscription.remove();
     };
-  }, []);
+  }, [handleDeepLink]);
 
   const signInWithGoogle = useCallback(async () => {
     if (!supabase) return { error: new Error('Supabase not initialized') };
-    WebBrowser.maybeCompleteAuthSession();
-    const redirectTo = AuthSession.makeRedirectUri({ scheme: 'focusup' });
-    return await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo } });
+
+    try {
+      // Production: Use native deep linking
+      const redirectTo = 'focusup://';
+
+      console.log('🔗 Redirect URI:', redirectTo);
+      console.log('📱 Platform:', require('react-native').Platform.OS);
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true, // Important for Expo/React Native
+        },
+      });
+
+      if (error) {
+        console.error('❌ OAuth initiation error:', error);
+        return { error };
+      }
+
+      if (!data?.url) {
+        console.error('❌ No OAuth URL returned');
+        return { error: new Error('No OAuth URL returned') };
+      }
+
+      console.log('✅ Google OAuth initiated, opening browser...');
+      console.log('🔗 OAuth URL:', data.url);
+
+      // Actually open the browser with the OAuth URL
+      const result = await WebBrowser.openAuthSessionAsync(
+        data.url,
+        redirectTo
+      );
+
+      console.log('📱 Browser result:', result.type);
+
+      if (result.type === 'success' && result.url) {
+        console.log('✅ OAuth success! Processing callback...');
+        console.log('🔗 Callback URL:', result.url);
+
+        // Extract tokens from the callback URL
+        const { access_token, refresh_token } = extractTokensFromUrl(result.url);
+
+        if (access_token && refresh_token) {
+          try {
+            // Set the session with the tokens from OAuth callback
+            const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+              access_token,
+              refresh_token,
+            });
+
+            if (sessionError) {
+              console.error('❌ Error setting session:', sessionError);
+              return { error: sessionError };
+            }
+
+            console.log('✅ Session established successfully:', sessionData.user?.email);
+            return { data: sessionData, error: null };
+          } catch (err: any) {
+            console.error('❌ Exception setting session:', err);
+            return { error: err };
+          }
+        } else {
+          console.error('❌ No tokens found in callback URL');
+          return { error: new Error('No authentication tokens received') };
+        }
+      } else if (result.type === 'cancel') {
+        console.log('⚠️ User cancelled OAuth');
+        return { error: new Error('User cancelled sign in') };
+      } else {
+        console.log('⚠️ OAuth did not complete:', result.type);
+        return { error: new Error('OAuth flow did not complete') };
+      }
+    } catch (err: any) {
+      console.error('❌ Google sign in exception:', err);
+      return { error: err };
+    }
   }, []);
 
   const signUpWithEmail = useCallback(async (email: string, password: string, fullName: string) => {

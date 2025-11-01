@@ -119,7 +119,8 @@ export default function Login() {
             googleError.message.includes('Provider not found')) {
           userMessage = 'Google sign-in is not properly configured. Please contact support.';
         } else if (googleError.message.includes('cancelled') ||
-                   googleError.message.includes('user_cancelled')) {
+                   googleError.message.includes('user_cancelled') ||
+                   googleError.message.includes('User cancelled')) {
           userMessage = 'Sign in was cancelled. Please try again if you want to continue.';
         } else if (googleError.message.includes('redirect')) {
           userMessage = 'OAuth redirect issue. Please ensure the app is properly configured.';
@@ -127,11 +128,13 @@ export default function Login() {
 
         setError(userMessage);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      } else if (data?.url) {
-        console.log('✅ Google OAuth initiated, opening browser...');
-        // OAuth flow started successfully
+      } else if (data?.user) {
+        // Session was successfully established
+        console.log('✅ Google sign in successful:', data.user.email);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        router.replace('/(tabs)/focus');
       } else {
-        console.log('✅ Google sign in successful');
+        console.log('✅ Google OAuth completed');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (err: any) {

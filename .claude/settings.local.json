@@ -8,7 +8,10 @@
       "Bash(timeout 5 npm start)",
       "Bash(git rm:*)",
       "Bash(mkdir:*)",
-      "Bash(npx expo install expo-file-system expo-sharing expo-linear-gradient)"
+      "Bash(npx expo install expo-file-system expo-sharing expo-linear-gradient)",
+      "WebSearch",
+      "WebFetch(domain:supabase.com)",
+      "Bash(npx expo config:*)"
     ],
     "deny": [],
     "ask": []
