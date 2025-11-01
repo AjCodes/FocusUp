@@ -8,6 +8,9 @@ import { TopBar } from '../../components/TopBar';
 import { useUserStats } from '../../hooks/useUserStats';
 import { Habit, HabitCompletion } from '../../types/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAppData } from '../../store/appData';
+import { Ionicons } from '@expo/vector-icons';
+import { SwipeableRow } from '../../components/SwipeableRow';
 
 const USER_ID_KEY = 'focusup-user-id';
 type FocusAttributeKey = 'PH' | 'CO' | 'EM' | 'SO';
@@ -37,7 +40,6 @@ export default function Habits() {
   const { colors } = useTheme();
   const { userStats, addCoins } = useUserStats();
   const { session } = useAuth();
-  const [habits, setHabits] = useState<Habit[]>([]);
   const [completions, setCompletions] = useState<HabitCompletion[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -46,6 +48,12 @@ export default function Habits() {
     cue: '',
     focus_attribute: 'CO' as FocusAttributeKey,
   });
+
+  // Use appData store
+  const habits = useAppData(state => state.habits);
+  const refreshAll = useAppData(state => state.refreshAll);
+  const createHabit = useAppData(state => state.createHabit);
+  const deleteHabit = useAppData(state => state.deleteHabit);
 
   const getUserId = async (): Promise<string> => {
     let userId = await AsyncStorage.getItem(USER_ID_KEY);
@@ -58,54 +66,20 @@ export default function Habits() {
 
   const loadHabits = async () => {
     try {
-      const userId = await getUserId();
-      const loadFromStorage = async () => {
-        try {
-          const localHabits = await AsyncStorage.getItem(`habits-${userId}`);
-          if (localHabits) {
-            const parsed: Habit[] = JSON.parse(localHabits).map((habit: Habit) => ({
-              ...habit,
-              focus_attribute: normalizeFocusAttribute(habit.focus_attribute as string) as Habit['focus_attribute'],
-            }));
-            setHabits(parsed);
-          }
-          const localCompletions = await AsyncStorage.getItem(`habit-completions-${userId}`);
-          if (localCompletions) {
-            setCompletions(JSON.parse(localCompletions));
-          }
-        } catch (storageError) {
-          console.error('Error loading habits from storage:', storageError);
+      const userId = session?.user?.id ?? await getUserId();
+      
+      // Load habits from store
+      await refreshAll(userId);
+      
+      // Load completions separately (not in store yet)
+      if (supabase && session?.user?.id) {
+        const { data: completionsData, error: completionsError } = await supabase
+          .from('habit_completions')
+          .select('*')
+          .eq('user_id', session.user.id);
+        if (!completionsError && completionsData) {
+          setCompletions(completionsData as HabitCompletion[]);
         }
-      };
-      await loadFromStorage();
-      if (!supabase || !session?.user?.id) {
-        setLoading(false);
-        return;
-      }
-      const { data: habitsData, error: habitsError } = await supabase
-        .from('habits')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .order('created_at', { ascending: false });
-      const { data: completionsData, error: completionsError } = await supabase
-        .from('habit_completions')
-        .select('*')
-        .eq('user_id', session.user.id);
-      if (!habitsError && habitsData) {
-        const normalized = (habitsData as Habit[]).map(habit => ({
-          ...habit,
-          focus_attribute: normalizeFocusAttribute(habit.focus_attribute as string) as Habit['focus_attribute'],
-        }));
-        setHabits(normalized);
-        await AsyncStorage.setItem(`habits-${userId}`, JSON.stringify(normalized));
-      } else if (habitsError) {
-        console.warn('Supabase habit fetch failed, continuing with cached data:', habitsError.message);
-      }
-      if (!completionsError && completionsData) {
-        setCompletions(completionsData as HabitCompletion[]);
-        await AsyncStorage.setItem(`habit-completions-${userId}`, JSON.stringify(completionsData));
-      } else if (completionsError) {
-        console.warn('Supabase habit completion fetch failed:', completionsError.message);
       }
     } catch (error) {
       console.error('Error loading habits:', error);
@@ -120,50 +94,27 @@ export default function Habits() {
       return;
     }
     try {
-      const userId = await getUserId();
+      const userId = session?.user?.id ?? await getUserId();
       const trimmedTitle = newHabit.title.trim();
       const trimmedCue = newHabit.cue.trim();
-      let createdHabit: Habit | null = null;
-      if (supabase && session?.user?.id) {
-        const { data, error } = await supabase
-          .from('habits')
-          .insert({
-            title: trimmedTitle,
-            cue: trimmedCue || null,
-            focus_attribute: newHabit.focus_attribute,
-            user_id: session.user.id,
-          })
-          .select()
-          .single();
-        if (!error && data) {
-          createdHabit = data as Habit;
-        } else if (error) {
-          console.warn('Supabase add habit failed, using local storage fallback:', error.message);
-        }
-      }
-      if (!createdHabit) {
-        createdHabit = {
-          id: `habit_${Date.now()}`,
-          title: trimmedTitle,
-          cue: trimmedCue || null,
-          focus_attribute: newHabit.focus_attribute,
-          created_at: new Date().toISOString(),
-          user_id: userId,
-        };
-      }
-      const normalizedHabit: Habit = {
-        ...createdHabit,
-        focus_attribute: normalizeFocusAttribute(createdHabit.focus_attribute as string) as Habit['focus_attribute'],
-      };
-      setHabits(prev => {
-        const updated = [normalizedHabit, ...prev];
-        AsyncStorage.setItem(`habits-${userId}`, JSON.stringify(updated)).catch(err =>
-          console.error('Error caching habits locally:', err)
-        );
-        return updated;
-      });
+      
+      // Create habit - this already does optimistic update
+      await createHabit(userId, trimmedTitle, trimmedCue || null, newHabit.focus_attribute);
+      
+      // Clear form immediately
       setNewHabit({ title: '', cue: '', focus_attribute: 'CO' as FocusAttributeKey });
       setShowAddModal(false);
+      
+      // Refresh after a short delay to ensure database sync (for authenticated users)
+      // This won't overwrite the optimistic update due to duplicate checking
+      setTimeout(async () => {
+        try {
+          await refreshAll(userId);
+        } catch (err) {
+          // Silent fail - optimistic update already showed the item
+          console.warn('Background refresh failed:', err);
+        }
+      }, 500);
     } catch (error) {
       console.error('Error adding habit:', error);
       Alert.alert('Error', 'Failed to add habit');
@@ -230,7 +181,7 @@ export default function Habits() {
     }
   };
 
-  const deleteHabit = async (habit: Habit) => {
+  const deleteHabitHandler = async (habit: Habit) => {
     Alert.alert(
       'Delete Habit',
       `Are you sure you want to delete "${habit.title}"?`,
@@ -241,36 +192,15 @@ export default function Habits() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const userId = await getUserId();
-              if (!supabase || !session?.user?.id) {
-                const updatedHabits = habits.filter(h => h.id !== habit.id);
-                const updatedCompletions = completions.filter(c => c.habit_id !== habit.id);
-                setHabits(updatedHabits);
-                setCompletions(updatedCompletions);
-                await AsyncStorage.setItem(`habits-${userId}`, JSON.stringify(updatedHabits));
-                await AsyncStorage.setItem(`habit-completions-${userId}`, JSON.stringify(updatedCompletions));
-                return;
-              }
-              const { error } = await supabase
-                .from('habits')
-                .delete()
-                .eq('id', habit.id);
-              if (!error) {
-                setHabits(prev => {
-                  const updatedHabits = prev.filter(h => h.id !== habit.id);
-                  AsyncStorage.setItem(`habits-${userId}`, JSON.stringify(updatedHabits)).catch(err =>
-                    console.error('Error caching habits locally:', err)
-                  );
-                  return updatedHabits;
-                });
-                setCompletions(prev => {
-                  const updatedCompletions = prev.filter(c => c.habit_id !== habit.id);
-                  AsyncStorage.setItem(`habit-completions-${userId}`, JSON.stringify(updatedCompletions)).catch(err =>
-                    console.error('Error caching habit completions locally:', err)
-                  );
-                  return updatedCompletions;
-                });
-              }
+              const userId = session?.user?.id ?? await getUserId();
+              await deleteHabit(habit.id, userId);
+              
+              // Remove related completions
+              const updatedCompletions = completions.filter(c => c.habit_id !== habit.id);
+              setCompletions(updatedCompletions);
+              
+              // Refresh to sync
+              await refreshAll(userId);
             } catch (error) {
               console.error('Error deleting habit:', error);
             }
@@ -319,59 +249,96 @@ export default function Habits() {
   const renderHabit = ({ item: habit }: { item: Habit }) => {
     const streak = getHabitStreak(habit.id);
     const completedToday = isCompletedToday(habit.id);
+    const attr = FOCUS_ATTRIBUTES.find(a => a.key === habit.focus_attribute);
+    
     return (
-      <GlassCard key={habit.id} style={{ marginVertical: 4 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <Pressable
-            onPress={() => toggleHabitCompletion(habit)}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              backgroundColor: completedToday ? colors.success : colors.cardBackground,
-              borderWidth: 2,
-              borderColor: completedToday ? colors.success : colors.primary,
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}
-          >
-            {completedToday && <Text style={{ color: colors.background, fontSize: 16 }}>✓</Text>}
-          </Pressable>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={{ fontSize: 16, color: colors.text, fontWeight: '600' }}>
-                {habit.title}
-              </Text>
-              <Text style={{ fontSize: 14 }}>{getAttributeEmoji(habit.focus_attribute)}</Text>
-            </View>
-            {habit.cue && (
-              <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
-                {habit.cue}
-              </Text>
-            )}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
-              <Text style={{ fontSize: 12, color: colors.textSecondary }}>
-                🔥 {streak} day streak
-              </Text>
-              {completedToday && (
-                <Text style={{ fontSize: 12, color: colors.success }}>
-                  +5 coins
+      <SwipeableRow
+        key={habit.id}
+        onSwipeRight={!completedToday ? () => toggleHabitCompletion(habit) : undefined}
+        onSwipeLeft={() => deleteHabitHandler(habit)}
+        rightActionColor={colors.success}
+        leftActionColor="#EF4444"
+        rightIcon="checkmark-circle"
+        leftIcon="trash"
+      >
+        <GlassCard style={{ marginVertical: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+            <Pressable
+              onPress={() => toggleHabitCompletion(habit)}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 14,
+                backgroundColor: completedToday ? colors.success : 'transparent',
+                borderWidth: 2,
+                borderColor: completedToday ? colors.success : colors.primary + '60',
+                justifyContent: 'center',
+                alignItems: 'center',
+                marginTop: 2,
+              }}
+            >
+              {completedToday && <Text style={{ color: colors.background, fontSize: 14, fontWeight: 'bold' }}>✓</Text>}
+            </Pressable>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <Text style={{ fontSize: 17, color: colors.text, fontWeight: '600' }}>
+                  {habit.title}
+                </Text>
+                <View style={{
+                  backgroundColor: (attr?.color || colors.primary) + '20',
+                  paddingHorizontal: 8,
+                  paddingVertical: 2,
+                  borderRadius: 8,
+                }}>
+                  <Text style={{ fontSize: 12 }}>{attr?.emoji}</Text>
+                </View>
+              </View>
+              {habit.cue && (
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 6, fontStyle: 'italic' }}>
+                  {habit.cue}
                 </Text>
               )}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View style={{ 
+                  backgroundColor: colors.cardBackground,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: 12,
+                }}>
+                  <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '600' }}>
+                    {streak} day streak
+                  </Text>
+                </View>
+                {completedToday && (
+                  <View style={{ 
+                    backgroundColor: colors.success + '20',
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderRadius: 12,
+                  }}>
+                    <Text style={{ fontSize: 11, color: colors.success, fontWeight: '600' }}>
+                      Completed today
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
+            <Pressable
+              onPress={() => deleteHabitHandler(habit)}
+              style={{
+                padding: 8,
+                borderRadius: 8,
+                backgroundColor: colors.cardBackground,
+                justifyContent: 'center',
+                alignItems: 'center',
+                marginTop: 2,
+              }}
+            >
+              <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
+            </Pressable>
           </View>
-          <Pressable
-            onPress={() => deleteHabit(habit)}
-            style={{
-              padding: 8,
-              borderRadius: 8,
-              backgroundColor: colors.cardBackground,
-            }}
-          >
-            <Text style={{ color: colors.textSecondary, fontSize: 16 }}>🗑️</Text>
-          </Pressable>
-        </View>
-      </GlassCard>
+        </GlassCard>
+      </SwipeableRow>
     );
   };
 

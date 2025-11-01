@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, TextInput, Pressable, FlatList, ActivityIndicator, Alert } from "react-native";
+import { View, Text, TextInput, Pressable, FlatList, ActivityIndicator, Alert, StyleSheet } from "react-native";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../src/features/auth/useAuth";
 import { useTheme } from "../../components/ThemeProvider";
@@ -12,16 +12,36 @@ import { handleError, showSuccess, handleSupabaseError } from "../../utils/error
 import { useLoading } from "../../hooks/useLoading";
 import { validateTaskTitle, sanitizeText } from "../../utils/validation";
 import { REWARDS, STORAGE_KEYS, VALIDATION } from "../../src/constants/app";
+import { useAppData } from "../../store/appData";
+import { Ionicons } from "@expo/vector-icons";
+import { SwipeableRow } from "../../components/SwipeableRow";
 
 export default function Tasks() {
   const { colors } = useTheme();
   const { userStats, addCoins } = useUserStats();
   const { session } = useAuth();
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active');
   const [title, setTitle] = useState("");
   const [inputError, setInputError] = useState("");
   const { loading, withLoading } = useLoading(true);
   const [operationLoading, setOperationLoading] = useState<Record<string, boolean>>({});
+
+  // Use appData store
+  const allTasks = useAppData(state => state.tasks);
+  const refreshAll = useAppData(state => state.refreshAll);
+  const createTask = useAppData(state => state.createTask);
+  const updateTask = useAppData(state => state.updateTask);
+  const deleteTask = useAppData(state => state.deleteTask);
+
+  // Filter tasks by tab
+  const activeTasks = allTasks.filter(t => !t.done).sort((a, b) => 
+    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+  const completedTasks = allTasks.filter(t => t.done).sort((a, b) => {
+    const aDate = a.completed_at ? new Date(a.completed_at).getTime() : 0;
+    const bDate = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+    return bDate - aDate;
+  });
 
   const getUserId = async (): Promise<string> => {
     let userId = await AsyncStorage.getItem(STORAGE_KEYS.USER_ID);
@@ -33,46 +53,14 @@ export default function Tasks() {
   };
 
   async function load() {
-    await withLoading(async () => {
+    await withLoading((async () => {
       try {
-        const userId = await getUserId();
-
-        // Try loading from local storage first
-        const localTasks = await AsyncStorage.getItem(`tasks-${userId}`);
-        if (localTasks) {
-          const parsed = JSON.parse(localTasks);
-          const normalized = parsed.map((t: any) => ({ ...t, done: t.done ?? false })) as Task[];
-          setTasks(normalized);
-        }
-
-        // If not authenticated or no Supabase, use local storage only
-        if (!supabase || !session?.user?.id) {
-          return;
-        }
-
-        // Fetch from Supabase
-        const { data, error } = await supabase
-          .from("tasks")
-          .select("id, title, created_at, user_id, notes, done")
-          .eq('user_id', session.user.id)
-          .order("created_at", { ascending: false });
-
-        if (error) {
-          handleSupabaseError(error, 'Load tasks');
-          return;
-        }
-
-        if (data) {
-          // Normalize data with done field
-          const normalized = data.map((t: any) => ({ ...t, done: t.done ?? false })) as Task[];
-          setTasks(normalized);
-          // Cache to local storage
-          await AsyncStorage.setItem(`tasks-${userId}`, JSON.stringify(normalized));
-        }
+        const userId = session?.user?.id ?? await getUserId();
+        await refreshAll(userId);
       } catch (error) {
         handleError(error, 'Load tasks');
       }
-    });
+    })());
   }
 
   async function add() {
@@ -90,44 +78,24 @@ export default function Tasks() {
 
     setOperationLoading(prev => ({ ...prev, add: true }));
     try {
-      const userId = await getUserId();
-      let newTask: Task | null = null;
-
-      // Try Supabase if authenticated
-      if (supabase && session?.user?.id) {
-        const { data, error } = await supabase
-          .from("tasks")
-          .insert({ title: sanitizedTitle, user_id: session.user.id, notes: null, done: false })
-          .select("id, title, created_at, user_id, notes, done")
-          .single();
-
-        if (error) {
-          handleSupabaseError(error, 'Add task');
-          // Fall back to local storage
-        } else if (data) {
-          newTask = { ...data, done: false } as Task;
-        }
-      }
-
-      // Create local task if Supabase failed or not available
-      if (!newTask) {
-        newTask = {
-          id: `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          title: sanitizedTitle,
-          done: false,
-          created_at: new Date().toISOString(),
-          user_id: userId,
-        };
-      }
-
-      // Update state and cache
-      const updated = [newTask, ...tasks];
-      setTasks(updated);
-      await AsyncStorage.setItem(`tasks-${userId}`, JSON.stringify(updated));
-
-      // Clear input
+      const userId = session?.user?.id ?? await getUserId();
+      // Create task - this already does optimistic update
+      await createTask(userId, sanitizedTitle);
+      
+      // Clear input immediately
       setTitle("");
       showSuccess('Quest added!', 'Complete it during a sprint to earn coins');
+      
+      // Refresh after a short delay to ensure database sync (for authenticated users)
+      // This won't overwrite the optimistic update due to duplicate checking
+      setTimeout(async () => {
+        try {
+          await refreshAll(userId);
+        } catch (err) {
+          // Silent fail - optimistic update already showed the item
+          console.warn('Background refresh failed:', err);
+        }
+      }, 500);
     } catch (error) {
       handleError(error, 'Add task');
     } finally {
@@ -138,33 +106,17 @@ export default function Tasks() {
   async function toggle(task: Task) {
     setOperationLoading(prev => ({ ...prev, [task.id]: true }));
     try {
-      const userId = await getUserId();
+      const userId = session?.user?.id ?? await getUserId();
       const newDoneState = !task.done;
 
-      // Update local state immediately (optimistic update)
-      const updatedTasks = tasks.map(t =>
-        t.id === task.id ? { ...t, done: newDoneState } : t
-      );
-      setTasks(updatedTasks);
+      // Update via store (includes optimistic update)
+      await updateTask(task.id, {
+        done: newDoneState,
+        completed_at: newDoneState ? new Date().toISOString() : null,
+      }, userId);
 
-      // Cache locally
-      await AsyncStorage.setItem(`tasks-${userId}`, JSON.stringify(updatedTasks));
-
-      // Try updating Supabase if authenticated
-      if (supabase && session?.user?.id) {
-        const { error } = await supabase
-          .from("tasks")
-          .update({ done: newDoneState })
-          .eq("id", task.id);
-
-        if (error) {
-          handleSupabaseError(error, 'Update task');
-          // Revert on error
-          setTasks(tasks);
-          await AsyncStorage.setItem(`tasks-${userId}`, JSON.stringify(tasks));
-          return;
-        }
-      }
+      // Refresh to ensure sync
+      await refreshAll(userId);
 
       // Show completion message
       if (newDoneState) {
@@ -172,8 +124,6 @@ export default function Tasks() {
       }
     } catch (error) {
       handleError(error, 'Toggle task');
-      // Revert on error
-      setTasks(tasks);
     } finally {
       setOperationLoading(prev => ({ ...prev, [task.id]: false }));
     }
@@ -191,34 +141,12 @@ export default function Tasks() {
           onPress: async () => {
             setOperationLoading(prev => ({ ...prev, [`delete_${task.id}`]: true }));
             try {
-              const userId = await getUserId();
-
-              // Update local state immediately (optimistic delete)
-              const updatedTasks = tasks.filter(t => t.id !== task.id);
-              setTasks(updatedTasks);
-              await AsyncStorage.setItem(`tasks-${userId}`, JSON.stringify(updatedTasks));
-
-              // Try deleting from Supabase if authenticated
-              if (supabase && session?.user?.id) {
-                const { error } = await supabase
-                  .from("tasks")
-                  .delete()
-                  .eq("id", task.id);
-
-                if (error) {
-                  handleSupabaseError(error, 'Delete task');
-                  // Revert on error
-                  setTasks(tasks);
-                  await AsyncStorage.setItem(`tasks-${userId}`, JSON.stringify(tasks));
-                  return;
-                }
-              }
-
+              const userId = session?.user?.id ?? await getUserId();
+              await deleteTask(task.id, userId);
+              await refreshAll(userId);
               showSuccess('Quest deleted');
             } catch (error) {
               handleError(error, 'Delete task');
-              // Revert on error
-              setTasks(tasks);
             } finally {
               setOperationLoading(prev => ({ ...prev, [`delete_${task.id}`]: false }));
             }
@@ -234,56 +162,66 @@ export default function Tasks() {
     const isLoading = operationLoading[task.id];
 
     return (
-      <GlassCard key={task.id} style={{ marginVertical: 4, opacity: isLoading ? 0.6 : 1 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <Pressable
-            onPress={() => toggle(task)}
-            disabled={isLoading}
-            style={{
-              width: 24,
-              height: 24,
-              borderRadius: 12,
-              backgroundColor: task.done ? colors.success : colors.cardBackground,
-              borderWidth: 2,
-              borderColor: task.done ? colors.success : colors.primary,
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}
-          >
-            {isLoading ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : task.done ? (
-              <Text style={{ color: colors.background, fontSize: 14, fontWeight: 'bold' }}>✓</Text>
-            ) : null}
-          </Pressable>
-          <Text style={{
-            flex: 1,
-            color: colors.text,
-            textDecorationLine: task.done ? "line-through" : "none",
-            opacity: task.done ? 0.6 : 1,
-          }}>
-            {task.title}
-          </Text>
-          {task.done && (
-            <Text style={{ color: colors.success, fontSize: 12, fontWeight: '600' }}>
-              +{REWARDS.TASK_COMPLETE} coins
+      <SwipeableRow
+        key={task.id}
+        onSwipeRight={!task.done ? () => toggle(task) : undefined}
+        onSwipeLeft={() => remove(task)}
+        rightActionColor={colors.success}
+        leftActionColor="#EF4444"
+        rightIcon="checkmark-circle"
+        leftIcon="trash"
+        disabled={isLoading}
+      >
+        <GlassCard style={{ marginVertical: 4, opacity: isLoading ? 0.6 : 1 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <Pressable
+              onPress={() => toggle(task)}
+              disabled={isLoading}
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 12,
+                backgroundColor: task.done ? colors.success : colors.cardBackground,
+                borderWidth: 2,
+                borderColor: task.done ? colors.success : colors.primary,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+            >
+              {isLoading ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : task.done ? (
+                <Text style={{ color: colors.background, fontSize: 14, fontWeight: 'bold' }}>✓</Text>
+              ) : null}
+            </Pressable>
+            <Text style={{
+              flex: 1,
+              color: colors.text,
+              textDecorationLine: task.done ? "line-through" : "none",
+              opacity: task.done ? 0.6 : 1,
+            }}>
+              {task.title}
             </Text>
-          )}
-          <Pressable
-            onPress={() => remove(task)}
-            disabled={isLoading}
-            style={{
-              padding: 8,
-              borderRadius: 8,
-              backgroundColor: colors.cardBackground,
-            }}
-          >
-            <Text style={{ color: colors.textSecondary, fontSize: 16 }}>🗑️</Text>
-          </Pressable>
-        </View>
-      </GlassCard>
+            <Pressable
+              onPress={() => remove(task)}
+              disabled={isLoading}
+              style={{
+                padding: 8,
+                borderRadius: 8,
+                backgroundColor: colors.cardBackground,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+            >
+              <Ionicons name="trash-outline" size={20} color={colors.textSecondary} />
+            </Pressable>
+          </View>
+        </GlassCard>
+      </SwipeableRow>
     );
   };
+
+  const tasksToShow = activeTab === 'active' ? activeTasks : completedTasks;
 
   return (
     <View style={{ flex: 1, backgroundColor: '#1E293B' }}>
@@ -293,14 +231,46 @@ export default function Tasks() {
             Quest Log
           </Text>
           <Text style={{ color: colors.textSecondary, fontSize: 14 }}>
-            {tasks.filter(t => !t.done).length} tasks remaining
+            {activeTasks.length} active
           </Text>
         </View>
-        <Text style={{ color: colors.textSecondary, marginBottom: 20, fontSize: 16 }}>
+        
+        {/* Tab Bar */}
+        <View style={[styles.tabContainer, { backgroundColor: colors.cardBackground + '80', borderColor: colors.primary + '40' }]}>
+          <Pressable
+            onPress={() => setActiveTab('active')}
+            style={[
+              styles.tab,
+              activeTab === 'active' && { backgroundColor: colors.primary }
+            ]}
+          >
+            <Text style={[
+              styles.tabText,
+              { color: activeTab === 'active' ? colors.background : colors.textSecondary }
+            ]}>
+              Active
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setActiveTab('completed')}
+            style={[
+              styles.tab,
+              activeTab === 'completed' && { backgroundColor: colors.primary }
+            ]}
+          >
+            <Text style={[
+              styles.tabText,
+              { color: activeTab === 'completed' ? colors.background : colors.textSecondary }
+            ]}>
+              Completed
+            </Text>
+          </Pressable>
+        </View>
+        <Text style={{ color: colors.textSecondary, marginBottom: 12, fontSize: 16 }}>
           Capture quests, stack your streak, and trade victories for loot.
         </Text>
         <GlassCard style={{ marginBottom: 20 }}>
-          <View style={{ marginBottom: 16 }}>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 8 }}>
             <TextInput
               value={title}
               onChangeText={(text) => {
@@ -311,29 +281,24 @@ export default function Tasks() {
               placeholderTextColor={colors.textSecondary}
               maxLength={VALIDATION.TASK_TITLE_MAX}
               style={{
-                padding: 12,
+                flex: 1,
+                padding: 10,
                 backgroundColor: colors.cardBackground,
                 borderWidth: 1,
                 borderColor: inputError ? '#EF4444' : colors.primary,
                 borderRadius: 8,
                 color: colors.text,
+                fontSize: 14,
               }}
               onSubmitEditing={add}
               returnKeyType="done"
             />
-            {inputError ? (
-              <Text style={{ color: '#EF4444', fontSize: 12, marginTop: 4 }}>
-                {inputError}
-              </Text>
-            ) : null}
-          </View>
-          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
             <Pressable
               onPress={add}
               disabled={operationLoading.add || !title.trim()}
               style={{
                 backgroundColor: operationLoading.add || !title.trim() ? colors.cardBackground : colors.primary,
-                paddingHorizontal: 16,
+                paddingHorizontal: 14,
                 paddingVertical: 10,
                 borderRadius: 8,
                 opacity: operationLoading.add || !title.trim() ? 0.5 : 1,
@@ -342,28 +307,17 @@ export default function Tasks() {
               {operationLoading.add ? (
                 <ActivityIndicator size="small" color={colors.primary} />
               ) : (
-                <Text style={{ color: !title.trim() ? colors.textSecondary : colors.background, fontWeight: '600' }}>
-                  Add quest
+                <Text style={{ color: !title.trim() ? colors.textSecondary : colors.background, fontWeight: '600', fontSize: 14 }}>
+                  Add
                 </Text>
               )}
             </Pressable>
-            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
-              {tasks.filter(t => !t.done).length} tasks remaining
-            </Text>
           </View>
-          <View style={{
-            position: 'absolute',
-            top: 16,
-            right: 16,
-            backgroundColor: colors.warning,
-            paddingHorizontal: 8,
-            paddingVertical: 4,
-            borderRadius: 12,
-          }}>
-            <Text style={{ color: colors.background, fontSize: 12, fontWeight: '600' }}>
-              +{REWARDS.TASK_ADD} coins
+          {inputError ? (
+            <Text style={{ color: '#EF4444', fontSize: 12, marginTop: 4 }}>
+              {inputError}
             </Text>
-          </View>
+          ) : null}
         </GlassCard>
         {!supabase ? (
           <GlassCard>
@@ -378,18 +332,20 @@ export default function Tasks() {
               <Text style={{ color: colors.textSecondary, marginTop: 8 }}>Loading tasks...</Text>
             </View>
           </GlassCard>
-        ) : tasks.length === 0 ? (
+        ) : tasksToShow.length === 0 ? (
           <GlassCard>
             <Text style={{ color: colors.textSecondary, textAlign: 'center', fontSize: 16 }}>
-              No tasks yet
+              {activeTab === 'active' ? 'No active tasks yet' : 'No completed tasks yet'}
             </Text>
             <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 8 }}>
-              Everything you capture here will be ready for your next focus.
+              {activeTab === 'active' 
+                ? 'Everything you capture here will be ready for your next focus.'
+                : 'Completed tasks will appear here.'}
             </Text>
           </GlassCard>
         ) : (
           <FlatList
-            data={tasks}
+            data={tasksToShow}
             renderItem={renderTask}
             keyExtractor={(item) => item.id}
             showsVerticalScrollIndicator={false}
@@ -399,5 +355,26 @@ export default function Tasks() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  tabContainer: {
+    flexDirection: 'row',
+    borderRadius: 8,
+    padding: 4,
+    marginBottom: 16,
+    borderWidth: 1,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+});
 
 

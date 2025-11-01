@@ -20,8 +20,10 @@ export interface Task {
   id: string;
   title: string;
   done: boolean;
+  completed_at: string | null;
   created_at: string;
   user_id: string;
+  notes?: string | null;
 }
 
 export interface FocusSession {
@@ -30,10 +32,40 @@ export interface FocusSession {
   completed_at: string | null;
   duration: number; // in seconds
   mode: 'work' | 'break';
-  linked_task_id: string | null;
-  linked_habit_id: string | null;
+  linked_task_id: string | null; // Deprecated - use focus_session_tasks instead
+  linked_habit_id: string | null; // Deprecated - use focus_session_habits instead
   coins_earned: number;
   user_id: string;
+}
+
+export interface FocusSessionTask {
+  id: string;
+  session_id: string;
+  task_id: string;
+  completed: boolean;
+  completed_at: string | null;
+  user_id: string;
+  created_at: string;
+}
+
+export interface FocusSessionHabit {
+  id: string;
+  session_id: string;
+  habit_id: string;
+  performed: boolean;
+  performed_at: string | null;
+  user_id: string;
+  created_at: string;
+}
+
+export interface RewardEvent {
+  id: string;
+  user_id: string;
+  session_id: string | null;
+  type: 'coins' | 'xp';
+  amount: number;
+  attribute?: 'PH' | 'CO' | 'EM' | 'SO' | null;
+  created_at: string;
 }
 
 export interface UserStats {

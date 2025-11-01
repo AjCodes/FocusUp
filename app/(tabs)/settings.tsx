@@ -312,20 +312,6 @@ export default function Settings() {
 
       {/* App Preferences Section */}
       <SettingsSection title="App Preferences" icon="settings-outline">
-        <SettingsItem
-          label="Work Duration"
-          value="25 min"
-          onPress={() => {
-            Alert.alert('Coming Soon', 'Timer customization will be available soon.');
-          }}
-        />
-        <SettingsItem
-          label="Break Duration"
-          value="5 min"
-          onPress={() => {
-            Alert.alert('Coming Soon', 'Timer customization will be available soon.');
-          }}
-        />
         <SettingsToggle
           label="Auto-start Breaks"
           value={autoStartBreak}

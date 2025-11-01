@@ -36,6 +36,7 @@ type PomodoroState = {
   setLinkTask: (taskId: string | null) => void;
   setLinkHabit: (habitId: string | null) => void;
   setDurations: (workSeconds: number, breakSeconds: number) => void;
+  setPhase: (phase: Phase) => void;
   start: (userId: string) => Promise<void>;
   pause: () => void;
   reset: () => void;
@@ -75,31 +76,50 @@ export const usePomodoroStore = create<PomodoroState>((set, get) => ({
     }
     set(next as any);
   },
+  setPhase: (phase) => {
+    const st = get();
+    set({ phase });
+    // If not running, also update secondsLeft to match the new phase
+    if (!st.running) {
+      const newSecondsLeft = phase === 'focus' ? st.workSeconds : st.breakSeconds;
+      set({ secondsLeft: newSecondsLeft });
+    }
+  },
   setLinkTask: (taskId) => set((s) => ({ sprint: { ...s.sprint, linkedTaskId: taskId, linkedHabitId: null } })),
   setLinkHabit: (habitId) => set((s) => ({ sprint: { ...s.sprint, linkedHabitId: habitId, linkedTaskId: null } })),
   async start(userId: string) {
     const state = get();
     const now = Date.now();
-    const duration = state.workSeconds ?? WORK_SECONDS;
+    // Use break duration if currently in break phase, otherwise work duration
+    const duration = state.phase === 'break' 
+      ? (state.breakSeconds ?? BREAK_SECONDS)
+      : (state.workSeconds ?? WORK_SECONDS);
     const target = now + duration * 1000;
-    // create sprint row if none
+    // create sprint row if none (only for work phase, not break)
     let sprintId = state.sprint.id;
     const isUuid = typeof userId === 'string' && /^[0-9a-fA-F-]{36}$/.test(userId);
-    if (!sprintId && supabase && isUuid) {
-      const { data, error } = await supabase.from('focus_sprints').insert({
+    if (!sprintId && supabase && isUuid && state.phase === 'focus') {
+      const { data, error } = await supabase.from('focus_sessions').insert({
         user_id: userId,
         linked_task_id: state.sprint.linkedTaskId,
         linked_habit_id: state.sprint.linkedHabitId,
-        work_started_at: new Date(now).toISOString(),
+        mode: state.phase === 'break' ? 'break' : 'work',
+        duration: duration,
+        started_at: new Date(now).toISOString(),
+        coins_earned: 0,
       }).select('id').single();
       if (!error && data) sprintId = data.id as string;
     }
+    
+    // Set phase based on current state (don't force to 'focus')
     set({
-      phase: 'focus',
+      phase: state.phase, // Keep current phase
       running: true,
       targetTimestamp: target,
       secondsLeft: duration,
-      sprint: { ...get().sprint, id: sprintId ?? null, userId, workStartedAt: new Date(now).toISOString() },
+      sprint: state.phase === 'focus' 
+        ? { ...get().sprint, id: sprintId ?? null, userId, workStartedAt: new Date(now).toISOString() }
+        : { ...get().sprint, id: sprintId ?? null, userId, breakStartedAt: new Date(now).toISOString() },
     });
 
     if (intervalHandle) clearInterval(intervalHandle);
@@ -134,6 +154,14 @@ export const usePomodoroStore = create<PomodoroState>((set, get) => ({
       }
     }
   },
+  // Helper to ensure break starts with correct duration
+  ensureBreakDuration: () => {
+    const state = get();
+    if (state.phase === 'break' && !state.running) {
+      const breakSec = state.breakSeconds ?? BREAK_SECONDS;
+      set({ secondsLeft: breakSec });
+    }
+  },
   async startBreak() {
     const state = get();
     const now = Date.now();
@@ -141,17 +169,16 @@ export const usePomodoroStore = create<PomodoroState>((set, get) => ({
     const target = now + duration * 1000;
     // persist work complete, then set break start
     if (supabase && state.sprint.id) {
-      await supabase.from('focus_sprints').update({
-        work_completed_at: state.sprint.workCompletedAt,
-        work_duration_sec: state.sprint.workDurationSec,
-        break_started_at: new Date(now).toISOString(),
+      await supabase.from('focus_sessions').update({
+        completed_at: state.sprint.workCompletedAt,
+        duration: state.sprint.workDurationSec || duration,
       }).eq('id', state.sprint.id);
     }
     set({
       phase: 'break',
       running: true,
       targetTimestamp: target,
-      secondsLeft: duration,
+      secondsLeft: duration, // Use breakSeconds, not WORK_SECONDS
       sprint: { ...state.sprint, breakStartedAt: new Date(now).toISOString() },
     });
     if (intervalHandle) clearInterval(intervalHandle);
@@ -163,9 +190,9 @@ export const usePomodoroStore = create<PomodoroState>((set, get) => ({
 
       // Persist to database
       if (supabase && s.id) {
-        await supabase.from('focus_sprints').update({
-          break_completed_at: s.breakCompletedAt,
-          break_duration_sec: s.breakDurationSec,
+        await supabase.from('focus_sessions').update({
+          completed_at: s.breakCompletedAt,
+          duration: (s.workDurationSec || 0) + (s.breakDurationSec || 0),
         }).eq('id', s.id);
       }
 
