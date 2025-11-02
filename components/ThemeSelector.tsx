@@ -12,6 +12,9 @@ interface ThemeOption {
   name: ThemeName;
   label: string;
   description: string;
+  cardBackground: string;
+  labelColor: string;
+  descriptionColor: string;
   preview: {
     type: 'solid' | 'gradient';
     colors: string[];
@@ -23,6 +26,9 @@ const themeOptions: ThemeOption[] = [
     name: 'darkGlass',
     label: 'Dark Glass',
     description: 'Deep blue glass with soft gradients',
+    cardBackground: '#132033',
+    labelColor: '#F8FAFC',
+    descriptionColor: 'rgba(203, 213, 225, 0.85)',
     preview: {
       type: 'solid',
       colors: ['#0A0F1C', '#1E293B'],
@@ -32,6 +38,9 @@ const themeOptions: ThemeOption[] = [
     name: 'auroraFlow',
     label: 'Aurora Flow',
     description: 'Vibrant gradient with shimmer effects',
+    cardBackground: '#141A27',
+    labelColor: '#E6E9F0',
+    descriptionColor: 'rgba(148, 163, 184, 0.85)',
     preview: {
       type: 'gradient',
       colors: ['#4f46e5', '#06b6d4', '#a855f7'],
@@ -41,6 +50,9 @@ const themeOptions: ThemeOption[] = [
     name: 'solarDawn',
     label: 'Solar Dawn',
     description: 'Warm light theme for daytime focus',
+    cardBackground: '#FFFFFF',
+    labelColor: '#1F2933',
+    descriptionColor: 'rgba(100, 116, 139, 0.9)',
     preview: {
       type: 'solid',
       colors: ['#F5F3EE', '#FFFFFF'],
@@ -50,6 +62,9 @@ const themeOptions: ThemeOption[] = [
     name: 'midnightNeon',
     label: 'Midnight Neon',
     description: 'Moody midnight blues with neon accents',
+    cardBackground: '#10162D',
+    labelColor: '#F3F4FF',
+    descriptionColor: 'rgba(156, 163, 199, 0.85)',
     preview: {
       type: 'solid',
       colors: ['#050817', '#1B2540'],
@@ -59,6 +74,9 @@ const themeOptions: ThemeOption[] = [
     name: 'zenGarden',
     label: 'Zen Garden',
     description: 'Calming neutrals inspired by nature',
+    cardBackground: '#FFFFFF',
+    labelColor: '#1F2933',
+    descriptionColor: 'rgba(91, 112, 105, 0.9)',
     preview: {
       type: 'solid',
       colors: ['#F7F9F5', '#E3EEE7'],
@@ -147,11 +165,7 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({ visible = true, on
                     borderWidth: isSelected ? 2 : 1,
                     opacity: pressed ? 0.9 : 1,
                     transform: [{ scale: pressed ? 0.98 : 1 }],
-                    backgroundColor: theme.name === 'zenGarden'
-                      ? '#FFFFFF'
-                      : theme.name === 'solarDawn'
-                        ? '#F8F7F2'
-                        : 'rgba(23, 30, 45, 0.45)',
+                    backgroundColor: theme.cardBackground,
                   },
                 ]}
               >
@@ -191,13 +205,16 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({ visible = true, on
                   <Text
                     style={[
                       styles.themeLabel,
-                      { color: isSelected ? colors.primary : colors.text },
+                      { color: isSelected ? colors.primary : theme.labelColor },
                     ]}
                   >
                     {theme.label}
                   </Text>
                   <Text
-                    style={[styles.themeDescription, { color: colors.textSecondary }]}
+                    style={[
+                      styles.themeDescription,
+                      { color: theme.descriptionColor },
+                    ]}
                     numberOfLines={2}
                   >
                     {theme.description}

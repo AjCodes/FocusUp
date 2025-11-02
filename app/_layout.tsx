@@ -2,6 +2,7 @@ import { Slot, useRouter, usePathname } from "expo-router";
 import * as Notifications from "expo-notifications";
 import { useEffect } from "react";
 import { Platform, StatusBar, BackHandler, Animated } from "react-native";
+import Constants from "expo-constants";
 import { ThemeProvider, useTheme } from "../components/ThemeProvider";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import Toast from 'react-native-toast-message';
@@ -43,9 +44,18 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (Platform.OS === "android") {
+      if (Constants.appOwnership === "expo") {
+        console.warn(
+          "expo-notifications: Remote push notifications are unavailable in Expo Go. Install a development build to test push."
+        );
+        return;
+      }
+
       Notifications.setNotificationChannelAsync("default", {
         name: "default",
         importance: Notifications.AndroidImportance.DEFAULT,
+      }).catch((error) => {
+        console.warn("Failed to configure Android notification channel", error);
       });
     }
   }, []);
