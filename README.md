@@ -199,7 +199,7 @@ If I had more time, I'd add:
 - [Expo Docs](https://docs.expo.dev/) - for everything React Native
 - [Supabase Docs](https://supabase.com/docs) - for backend setup
 - [Atomic Habits book](https://jamesclear.com/atomic-habits) - for the habit tracking concepts
-- Stack Overflow - for debugging (obviously)
+- AI models- for debugging (obviously)
 
 ---
 
