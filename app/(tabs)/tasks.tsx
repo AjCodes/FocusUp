@@ -213,15 +213,15 @@ export default function Tasks() {
         leftIcon="trash"
         disabled={isLoading}
       >
-        <GlassCard style={{ marginVertical: 6, opacity: isLoading ? 0.6 : 1 }} padding={20}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16 }}>
+        <GlassCard style={{ marginVertical: 5, opacity: isLoading ? 0.6 : 1 }} padding={14}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
             <Pressable
               onPress={() => toggle(task)}
               disabled={isLoading}
               style={{
-                width: 38,
-                height: 38,
-                borderRadius: 19,
+                width: 32,
+                height: 32,
+                borderRadius: 16,
                 backgroundColor: task.done ? colors.success : `${colors.background}35`,
                 borderWidth: 2,
                 borderColor: task.done ? colors.success : `${colors.primary}55`,
@@ -231,6 +231,7 @@ export default function Tasks() {
                 shadowOpacity: task.done ? 0.3 : 0.12,
                 shadowRadius: 6,
                 elevation: task.done ? 5 : 0,
+                marginTop: 2,
               }}
             >
               {isLoading ? (
@@ -238,77 +239,77 @@ export default function Tasks() {
               ) : (
                 <Ionicons
                   name={task.done ? 'checkmark' : 'ellipse-outline'}
-                  size={20}
+                  size={18}
                   color={task.done ? colors.background : `${colors.primary}AA`}
                 />
               )}
             </Pressable>
-            <Pressable style={{ flex: 1, gap: 8 }} onPress={() => setEditingTask(task)}>
-              <Text
-                style={{
-                  color: colors.text,
-                  fontSize: 17,
-                  fontWeight: '600',
-                  textDecorationLine: task.done ? 'line-through' : 'none',
-                  opacity: task.done ? 0.6 : 1,
-                }}
-              >
-                {task.title}
-              </Text>
+            <Pressable style={{ flex: 1 }} onPress={() => setEditingTask(task)}>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: task.description ? 6 : 0 }}>
+                <Text
+                  style={{
+                    color: colors.text,
+                    fontSize: 16,
+                    fontWeight: '600',
+                    textDecorationLine: task.done ? 'line-through' : 'none',
+                    opacity: task.done ? 0.6 : 1,
+                    flex: 1,
+                    lineHeight: 20,
+                  }}
+                  numberOfLines={2}
+                >
+                  {task.title}
+                </Text>
+              </View>
               {task.description ? (
-                <Text style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 18 }}>
+                <Text
+                  style={{
+                    color: colors.textSecondary,
+                    fontSize: 12,
+                    lineHeight: 16,
+                    marginBottom: deadlineLabel ? 8 : 0,
+                  }}
+                  numberOfLines={2}
+                >
                   {task.description}
                 </Text>
               ) : null}
-              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-                {!task.done && (
-                  <View
-                    style={{
-                      backgroundColor: `${colors.primary}18`,
-                      borderRadius: 16,
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                    }}
-                  >
-                    <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600' }}>
-                      Tap card to edit
-                    </Text>
-                  </View>
-                )}
-                {deadlineLabel && (
+              {deadlineLabel && (
+                <View style={{ alignItems: 'flex-end', marginTop: task.description ? 0 : 4 }}>
                   <View
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 6,
+                      gap: 4,
                       backgroundColor: `${getDeadlineColor(task.deadline_at)}22`,
-                      borderRadius: 16,
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
+                      borderRadius: 12,
+                      paddingHorizontal: 10,
+                      paddingVertical: 4,
                       borderWidth: 1,
                       borderColor: `${getDeadlineColor(task.deadline_at)}44`,
                     }}
                   >
-                    <Ionicons name="calendar" size={14} color={getDeadlineColor(task.deadline_at)} />
-                    <Text style={{ color: getDeadlineColor(task.deadline_at), fontSize: 12, fontWeight: '700' }}>
+                    <Ionicons name="calendar" size={12} color={getDeadlineColor(task.deadline_at)} />
+                    <Text style={{ color: getDeadlineColor(task.deadline_at), fontSize: 11, fontWeight: '700' }}>
                       {deadlineLabel}
                     </Text>
                   </View>
-                )}
-              </View>
+                </View>
+              )}
             </Pressable>
             <Pressable
               onPress={() => remove(task)}
               disabled={isLoading}
               style={{
-                padding: 8,
-                borderRadius: 12,
+                padding: 6,
+                borderRadius: 10,
                 backgroundColor: colors.cardBackground,
                 justifyContent: 'center',
                 alignItems: 'center',
+                marginTop: 2,
               }}
             >
-              <Ionicons name="trash-outline" size={20} color={colors.textSecondary} />
+              <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
             </Pressable>
           </View>
         </GlassCard>

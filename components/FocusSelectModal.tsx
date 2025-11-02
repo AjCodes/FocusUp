@@ -101,7 +101,7 @@ export const FocusSelectModal: React.FC<FocusSelectModalProps> = ({
         style={styles.overlay}
         onPress={handleClose}
       >
-        <Pressable onPress={(e) => e.stopPropagation()}>
+        <Pressable onPress={(e) => e.stopPropagation()} style={{ maxHeight: '85%', width: '100%' }}>
           <GlassCard style={styles.modalCard}>
             <Text style={[styles.title, { color: colors.text }]}>
               Select Tasks & Habits
@@ -292,7 +292,8 @@ export const FocusSelectModal: React.FC<FocusSelectModalProps> = ({
                   {
                     backgroundColor: totalSelected === 0 ? colors.cardBackground : colors.primary,
                     opacity: totalSelected === 0 ? 0.5 : 1,
-                    borderColor: totalSelected === 0 ? colors.primary + '30' : colors.primary,
+                    borderColor: totalSelected === 0 ? colors.primary + '40' : colors.primary,
+                    shadowColor: colors.primary,
                   }
                 ]}
               >
@@ -324,12 +325,12 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: '95%',
     minWidth: 320,
-    maxHeight: '80%',
+    flex: 1,
   },
   title: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 12,
+    marginBottom: 10,
     textAlign: 'center',
   },
   tabContainer: {
@@ -337,7 +338,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(30, 41, 59, 0.5)',
     borderRadius: 8,
     padding: 4,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   tab: {
     flex: 1,
@@ -366,8 +367,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   content: {
-    minHeight: 200,
-    maxHeight: 300,
+    flex: 1,
+    minHeight: 150,
   },
   emptyState: {
     justifyContent: 'center',
@@ -406,17 +407,22 @@ const styles = StyleSheet.create({
   footer: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    marginTop: 16,
+    alignItems: 'center',
+    marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    borderTopColor: 'rgba(255,255,255,0.12)',
   },
   confirmButton: {
-    flex: 1,
+    minWidth: '70%',
     paddingVertical: 14,
     paddingHorizontal: 24,
-    borderRadius: 12,
-    borderWidth: 2,
+    borderRadius: 18,
+    borderWidth: 1.5,
     alignItems: 'center',
+    justifyContent: 'center',
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 10,
   },
 });

@@ -265,7 +265,7 @@ export default function Settings() {
         <SettingsToggle
           label="Enable Notifications"
           value={notificationsEnabled}
-          onValueChange={(value) => {
+          onValueChange={(value: boolean) => {
             setNotificationsEnabled(value);
             saveSetting('notifications-enabled', value);
           }}
@@ -273,7 +273,7 @@ export default function Settings() {
         <SettingsToggle
           label="Focus Reminders"
           value={focusReminders}
-          onValueChange={(value) => {
+          onValueChange={(value: boolean) => {
             setFocusReminders(value);
             saveSetting('focus-reminders', value);
           }}
@@ -282,7 +282,7 @@ export default function Settings() {
         <SettingsToggle
           label="Habit Reminders"
           value={habitReminders}
-          onValueChange={(value) => {
+          onValueChange={(value: boolean) => {
             setHabitReminders(value);
             saveSetting('habit-reminders', value);
           }}
@@ -291,7 +291,7 @@ export default function Settings() {
         <SettingsToggle
           label="Break Reminders"
           value={breakReminders}
-          onValueChange={(value) => {
+          onValueChange={(value: boolean) => {
             setBreakReminders(value);
             saveSetting('break-reminders', value);
           }}
@@ -315,7 +315,7 @@ export default function Settings() {
         <SettingsToggle
           label="Auto-start Breaks"
           value={autoStartBreak}
-          onValueChange={(value) => {
+          onValueChange={(value: boolean) => {
             setAutoStartBreak(value);
             saveSetting('auto-start-break', value);
           }}
@@ -323,7 +323,7 @@ export default function Settings() {
         <SettingsToggle
           label="Sound Effects"
           value={soundEffects}
-          onValueChange={(value) => {
+          onValueChange={(value: boolean) => {
             setSoundEffects(value);
             saveSetting('sound-effects', value);
           }}
@@ -331,7 +331,7 @@ export default function Settings() {
         <SettingsToggle
           label="Haptic Feedback"
           value={hapticFeedback}
-          onValueChange={(value) => {
+          onValueChange={(value: boolean) => {
             setHapticFeedback(value);
             saveSetting('haptic-feedback', value);
             if (value) {

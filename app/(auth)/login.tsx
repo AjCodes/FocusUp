@@ -118,9 +118,10 @@ export default function Login() {
 
     try {
       console.log('🔐 Attempting sign in with email:', email);
-      const { error: signInError, data } = await signInWithEmail(email, password);
+      const result = await signInWithEmail(email, password);
 
-      if (signInError) {
+      if (result.error) {
+        const signInError = result.error;
         console.error('❌ Sign in error:', signInError);
 
         // Provide more helpful error messages
@@ -140,7 +141,7 @@ export default function Login() {
         setError(userMessage);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       } else {
-        console.log('✅ Sign in successful:', data?.user?.email);
+        console.log('✅ Sign in successful:', result.data?.user?.email);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         router.replace('/(tabs)/focus');
       }
@@ -705,6 +706,10 @@ const styles = StyleSheet.create({
     color: '#EF4444',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  buttonPressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.98 }],
   },
 });
 
