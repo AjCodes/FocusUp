@@ -116,17 +116,28 @@ export const useAppData = create<AppDataState>((set, get) => ({
           loading: false,
         });
       } else {
-        // Guest mode - load from AsyncStorage but don't overwrite optimistic updates
-        // Keep current store state if it exists, otherwise load from storage
-        const currentTasks = get().tasks.filter(t => t.user_id === userId);
-        const currentHabits = get().habits.filter(h => h.user_id === userId);
+        // Guest mode - load from AsyncStorage and merge with optimistic updates
+        const allTasksInStore = get().tasks;
+        const allHabitsInStore = get().habits;
+        
+        const currentTasks = allTasksInStore.filter(t => t.user_id === userId);
+        const currentHabits = allHabitsInStore.filter(h => h.user_id === userId);
+
+        console.log('🔍 refreshAll debug:', {
+          userId,
+          allTasksInStore: allTasksInStore.length,
+          allHabitsInStore: allHabitsInStore.length,
+          currentTasks: currentTasks.length,
+          currentHabits: currentHabits.length,
+          allHabitsUserIds: allHabitsInStore.map(h => h.user_id),
+        });
 
         try {
           const storedTasks = await AsyncStorage.getItem(`tasks-${userId}`);
           const storedHabits = await AsyncStorage.getItem(`habits-${userId}`);
 
-          const tasksFromStorage = storedTasks ? JSON.parse(storedTasks) : [];
-          const habitsFromStorage = storedHabits ? JSON.parse(storedHabits) : [];
+          const tasksFromStorage: Task[] = storedTasks ? JSON.parse(storedTasks) : [];
+          const habitsFromStorage: Habit[] = storedHabits ? JSON.parse(storedHabits) : [];
 
           console.log('📦 Loaded from storage:', {
             tasksFromStorage: tasksFromStorage.length,
@@ -135,9 +146,47 @@ export const useAppData = create<AppDataState>((set, get) => ({
             currentHabits: currentHabits.length,
           });
 
-          // Merge with current state (prefer current/optimistic updates)
-          const mergedTasks = currentTasks.length > 0 ? currentTasks : tasksFromStorage;
-          const mergedHabits = currentHabits.length > 0 ? currentHabits : habitsFromStorage;
+          // Merge strategy: Create maps for both current and stored
+          const currentTasksMap = new Map(currentTasks.map(t => [t.id, t]));
+          const currentHabitsMap = new Map(currentHabits.map(h => [h.id, h]));
+          const storedTasksMap = new Map(tasksFromStorage.map(t => [t.id, t]));
+          const storedHabitsMap = new Map(habitsFromStorage.map(h => [h.id, h]));
+
+          // Merge: prefer current (optimistic) for existing IDs, but include all from storage
+          // Preserve existing state for other users if any
+          const mergedTasksMap = new Map<string, Task>();
+          const mergedHabitsMap = new Map<string, Habit>();
+
+          // First, preserve ALL existing items in store (for other users or previous state)
+          allTasksInStore.forEach(task => mergedTasksMap.set(task.id, task));
+          allHabitsInStore.forEach(habit => mergedHabitsMap.set(habit.id, habit));
+
+          // Then, add/update with items from storage (for this userId)
+          storedTasksMap.forEach((task, id) => {
+            if (task.user_id === userId) {
+              mergedTasksMap.set(id, task);
+            }
+          });
+          storedHabitsMap.forEach((habit, id) => {
+            if (habit.user_id === userId) {
+              mergedHabitsMap.set(id, habit);
+            }
+          });
+
+          // Finally, override with current/optimistic updates (these take priority)
+          currentTasksMap.forEach((task, id) => mergedTasksMap.set(id, task));
+          currentHabitsMap.forEach((habit, id) => mergedHabitsMap.set(id, habit));
+
+          // Convert maps back to arrays
+          const mergedTasks = Array.from(mergedTasksMap.values());
+          const mergedHabits = Array.from(mergedHabitsMap.values());
+
+          console.log('✅ Merged results:', {
+            mergedTasks: mergedTasks.length,
+            mergedHabits: mergedHabits.length,
+            mergedTasksForUser: mergedTasks.filter(t => t.user_id === userId).length,
+            mergedHabitsForUser: mergedHabits.filter(h => h.user_id === userId).length,
+          });
 
           set({
             tasks: mergedTasks,
@@ -146,8 +195,13 @@ export const useAppData = create<AppDataState>((set, get) => ({
           });
         } catch (storageError) {
           console.error('Error loading from storage:', storageError);
-          // If storage fails, at least keep current state
-          set({ loading: false });
+          // If storage fails, preserve ALL existing state (don't clear it)
+          // Don't filter - keep everything that's already in the store
+          set({
+            tasks: allTasksInStore,
+            habits: allHabitsInStore,
+            loading: false,
+          });
         }
       }
     } catch (error: any) {
@@ -773,9 +827,9 @@ export const useAppData = create<AppDataState>((set, get) => ({
           throw error;
         }
       } else if (!isUuid) {
-        // Guest mode task - save to AsyncStorage
+        // Guest mode task - save to AsyncStorage (only tasks for this user)
         try {
-          const allTasks = get().tasks;
+          const allTasks = get().tasks.filter(t => t.user_id === userId);
           await AsyncStorage.setItem(`tasks-${userId}`, JSON.stringify(allTasks));
         } catch (storageError) {
           console.warn('Failed to save task to AsyncStorage:', storageError);
@@ -816,9 +870,9 @@ export const useAppData = create<AppDataState>((set, get) => ({
           throw error;
         }
       } else if (!isUuid) {
-        // Guest mode task - save to AsyncStorage
+        // Guest mode task - save to AsyncStorage (only tasks for this user)
         try {
-          const allTasks = get().tasks;
+          const allTasks = get().tasks.filter(t => t.user_id === userId);
           await AsyncStorage.setItem(`tasks-${userId}`, JSON.stringify(allTasks));
         } catch (storageError) {
           console.warn('Failed to save tasks to AsyncStorage:', storageError);
@@ -847,7 +901,12 @@ export const useAppData = create<AppDataState>((set, get) => ({
           user_id: userId,
         };
 
-        console.log('✨ Creating new habit:', { id: newHabit.id, title: newHabit.title });
+        console.log('✨ Creating new habit:', { 
+          id: newHabit.id, 
+          title: newHabit.title, 
+          userId: newHabit.user_id,
+          totalHabitsBefore: get().habits.length 
+        });
 
         // Check for duplicates
         const existingHabit = get().habits.find(h => h.title === newHabit.title && h.focus_attribute === newHabit.focus_attribute);
@@ -856,18 +915,23 @@ export const useAppData = create<AppDataState>((set, get) => ({
         }
 
         // Add to store
-        set(state => ({
-          habits: [newHabit, ...state.habits]
-        }));
+        set(state => {
+          const newHabits = [newHabit, ...state.habits];
+          console.log('✅ Added habit to store. Total habits now:', newHabits.length);
+          return { habits: newHabits };
+        });
 
-        // Save to AsyncStorage
-        try {
-          const allHabits = get().habits;
-          await AsyncStorage.setItem(`habits-${userId}`, JSON.stringify(allHabits));
-          console.log('💾 Saved habit to AsyncStorage. Total habits:', allHabits.length);
-        } catch (storageError) {
-          console.error('Failed to save habit to AsyncStorage:', storageError);
-        }
+        // Save to AsyncStorage (only habits for this user)
+        // Use setTimeout to ensure store state is updated
+        setTimeout(async () => {
+          try {
+            const allHabits = get().habits.filter(h => h.user_id === userId);
+            await AsyncStorage.setItem(`habits-${userId}`, JSON.stringify(allHabits));
+            console.log('💾 Saved habit to AsyncStorage. Total habits for userId:', userId, allHabits.length);
+          } catch (storageError) {
+            console.error('Failed to save habit to AsyncStorage:', storageError);
+          }
+        }, 100);
 
         return newHabit;
       }
@@ -933,9 +997,9 @@ export const useAppData = create<AppDataState>((set, get) => ({
           throw error;
         }
       } else if (!isUuid) {
-        // Guest mode habit - save to AsyncStorage
+        // Guest mode habit - save to AsyncStorage (only habits for this user)
         try {
-          const allHabits = get().habits;
+          const allHabits = get().habits.filter(h => h.user_id === userId);
           await AsyncStorage.setItem(`habits-${userId}`, JSON.stringify(allHabits));
         } catch (storageError) {
           console.warn('Failed to save habit to AsyncStorage:', storageError);
@@ -985,11 +1049,11 @@ export const useAppData = create<AppDataState>((set, get) => ({
           throw error;
         }
       } else {
-        // Guest mode - update AsyncStorage
+        // Guest mode - update AsyncStorage (only habits for this user)
         try {
-          const allHabits = get().habits;
+          const allHabits = get().habits.filter(h => h.user_id === userId);
           await AsyncStorage.setItem(`habits-${userId}`, JSON.stringify(allHabits));
-          console.log('💾 Updated AsyncStorage after delete');
+          console.log('💾 Updated AsyncStorage after delete. Remaining habits:', allHabits.length);
         } catch (storageError) {
           console.error('Failed to update AsyncStorage:', storageError);
         }

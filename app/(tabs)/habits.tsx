@@ -322,6 +322,7 @@ export default function Habits() {
   // Reload habits when tab becomes focused
   useFocusEffect(
     React.useCallback(() => {
+      console.log('🔄 Habits tab focused, reloading...');
       loadHabits();
     }, [])
   );

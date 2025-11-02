@@ -149,15 +149,19 @@ export const FocusSelectModal: React.FC<FocusSelectModalProps> = ({
               </Pressable>
             </View>
 
-            <View style={styles.content}>
+            <ScrollView 
+              style={styles.content}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 16 }}
+            >
               {activeTab === 'tasks' ? (
                 incompleteTasks.length === 0 ? (
                   <View style={styles.emptyState}>
                     <Ionicons name="list-outline" size={42} color={colors.textSecondary} />
-                    <Text style={{ color: colors.textSecondary, marginTop: 12 }}>No tasks ready.</Text>
+                    <Text style={{ color: colors.textSecondary, marginTop: 12 }}>Create tasks first to add to your session</Text>
                   </View>
                 ) : (
-                  <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
+                  <>
                     {incompleteTasks.map(task => {
                       const isSelected = selectedTaskIds.has(task.id);
                       return (
@@ -178,19 +182,19 @@ export const FocusSelectModal: React.FC<FocusSelectModalProps> = ({
                             color={isSelected ? colors.primary : colors.textSecondary}
                             style={{ marginRight: 12 }}
                           />
-                          <Text style={{ color: colors.text, fontSize: 16, flex: 1 }}>{task.title}</Text>
+                          <Text style={{ color: colors.text, fontSize: 16, flex: 1, flexShrink: 1 }}>{task.title}</Text>
                         </Pressable>
                       );
                     })}
-                  </ScrollView>
+                  </>
                 )
               ) : habits.length === 0 ? (
                 <View style={styles.emptyState}>
                   <Ionicons name="fitness-outline" size={42} color={colors.textSecondary} />
-                  <Text style={{ color: colors.textSecondary, marginTop: 12 }}>No habits saved yet.</Text>
+                  <Text style={{ color: colors.textSecondary, marginTop: 12 }}>Create a habit first to add to your session</Text>
                 </View>
               ) : (
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
+                <>
                   {habits.map(habit => {
                     const isSelected = selectedHabitIds.has(habit.id);
                     const attr = FOCUS_ATTRIBUTES[habit.focus_attribute as keyof typeof FOCUS_ATTRIBUTES];
@@ -213,7 +217,7 @@ export const FocusSelectModal: React.FC<FocusSelectModalProps> = ({
                             color={isSelected ? colors.primary : colors.textSecondary}
                           />
                         </View>
-                        <View style={{ flex: 1 }}>
+                        <View style={{ flex: 1, flexShrink: 1 }}>
                           <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>{habit.title}</Text>
                           {habit.cue ? (
                             <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>{habit.cue}</Text>
@@ -225,9 +229,9 @@ export const FocusSelectModal: React.FC<FocusSelectModalProps> = ({
                       </Pressable>
                     );
                   })}
-                </ScrollView>
+                </>
               )}
-            </View>
+            </ScrollView>
 
             <View style={styles.footer}>
               <Pressable
@@ -312,9 +316,8 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   content: {
-    maxHeight: 380,
+    maxHeight: 400,
     borderRadius: 16,
-    overflow: 'hidden',
   },
   emptyState: {
     alignItems: 'center',
@@ -335,6 +338,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 18,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(148, 163, 184, 0.12)',
   },
   footerButton: {
     flex: 1,
