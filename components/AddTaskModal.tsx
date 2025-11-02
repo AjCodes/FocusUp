@@ -1,410 +1,345 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, Modal, ScrollView, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Modal, Pressable, View, Text, TextInput, StyleSheet, Platform, KeyboardAvoidingView } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from './ThemeProvider';
 import { GlassCard } from './GlassCard';
-import { validateTaskTitle, validateNotes, sanitizeText } from '../utils/validation';
-import { REWARDS, VALIDATION } from '../src/constants/app';
-import { Ionicons } from '@expo/vector-icons';
+import { sanitizeText, validateDescription, validateTaskTitle } from '../utils/validation';
 
-interface Task {
-  id: string;
+export interface TaskDraft {
   title: string;
-  notes?: string;
-  done?: boolean;
-  priority?: 'low' | 'medium' | 'high';
+  description?: string;
+  deadline_at?: string | null;
 }
 
 interface AddTaskModalProps {
   visible: boolean;
   onClose: () => void;
-  onAdd: (title: string, notes?: string) => void;
-  onSelect?: (task: Task) => void;
-  existingTasks?: Task[];
+  onSubmit: (payload: TaskDraft) => void;
+  initialValues?: Partial<TaskDraft>;
+  editMode?: boolean;
 }
+
+const initialState: TaskDraft = {
+  title: '',
+  description: '',
+  deadline_at: null,
+};
 
 export const AddTaskModal: React.FC<AddTaskModalProps> = ({
   visible,
   onClose,
-  onAdd,
-  onSelect,
-  existingTasks = []
+  onSubmit,
+  initialValues,
+  editMode = false,
 }) => {
   const { colors } = useTheme();
-  const [title, setTitle] = useState('');
-  const [notes, setNotes] = useState('');
-  const [errors, setErrors] = useState({ title: '', notes: '' });
-  const [activeTab, setActiveTab] = useState<'select' | 'create'>('select');
+  const [draft, setDraft] = useState<TaskDraft>(initialState);
+  const [errors, setErrors] = useState<{ title?: string; description?: string; deadline_at?: string }>({});
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
-  // Filter out completed tasks and show only incomplete ones
-  const incompleteTasks = existingTasks.filter(task => !task.done);
+  useEffect(() => {
+    if (visible) {
+      const deadlineDate = initialValues?.deadline_at ? new Date(initialValues.deadline_at) : null;
+      setDraft({
+        title: initialValues?.title ?? '',
+        description: initialValues?.description ?? '',
+        deadline_at: initialValues?.deadline_at ?? null,
+      });
+      setSelectedDate(deadlineDate);
+      setErrors({});
+    }
+  }, [visible, initialValues]);
 
-  const handleAdd = () => {
-    // Clear previous errors
-    setErrors({ title: '', notes: '' });
+  const resetAndClose = () => {
+    setDraft(initialState);
+    setSelectedDate(null);
+    setShowDatePicker(false);
+    setErrors({});
+    onClose();
+  };
 
-    // Validate title
-    const titleValidation = validateTaskTitle(title);
+  const handleChange = (key: keyof TaskDraft, value: string) => {
+    setDraft(prev => ({
+      ...prev,
+      [key]: value,
+    }));
+    setErrors(prev => ({ ...prev, [key]: undefined }));
+  };
+
+  const handleDateChange = (_event: any, date?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+
+    if (date) {
+      setSelectedDate(date);
+      setDraft(prev => ({
+        ...prev,
+        deadline_at: date.toISOString(),
+      }));
+      setErrors(prev => ({ ...prev, deadline_at: undefined }));
+    }
+  };
+
+  const clearDeadline = () => {
+    setSelectedDate(null);
+    setDraft(prev => ({ ...prev, deadline_at: null }));
+  };
+
+  const formatDeadlineDisplay = (date: Date) => {
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const dateStr = date.toDateString();
+    if (dateStr === today.toDateString()) return 'Today';
+    if (dateStr === tomorrow.toDateString()) return 'Tomorrow';
+
+    return date.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
+    });
+  };
+
+  const handleSubmit = () => {
+    const nextErrors: typeof errors = {};
+
+    const titleValidation = validateTaskTitle(draft.title);
     if (!titleValidation.isValid) {
-      setErrors(prev => ({ ...prev, title: titleValidation.error || '' }));
+      nextErrors.title = titleValidation.error;
+    }
+
+    const descriptionValidation = validateDescription(draft.description ?? '');
+    if (!descriptionValidation.isValid) {
+      nextErrors.description = descriptionValidation.error;
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
       return;
     }
 
-    // Validate notes (optional field)
-    const notesValidation = validateNotes(notes);
-    if (!notesValidation.isValid) {
-      setErrors(prev => ({ ...prev, notes: notesValidation.error || '' }));
-      return;
-    }
-
-    // Sanitize inputs
-    const sanitizedTitle = sanitizeText(title);
-    const sanitizedNotes = notes.trim() ? sanitizeText(notes) : undefined;
-
-    // Call parent handler
-    onAdd(sanitizedTitle, sanitizedNotes);
-
-    // Reset form
-    setTitle('');
-    setNotes('');
-    setErrors({ title: '', notes: '' });
-    onClose();
-  };
-
-  const handleClose = () => {
-    setTitle('');
-    setNotes('');
-    setErrors({ title: '', notes: '' });
-    setActiveTab('select');
-    onClose();
-  };
-
-  const handleSelectTask = (task: Task) => {
-    if (onSelect) {
-      onSelect(task);
-    }
-    handleClose();
-  };
-
-  const getPriorityColor = (priority?: string) => {
-    switch (priority) {
-      case 'high': return '#EF4444';
-      case 'medium': return '#F59E0B';
-      case 'low': return '#10B981';
-      default: return colors.textSecondary;
-    }
-  };
-
-  const getPriorityIcon = (priority?: string) => {
-    switch (priority) {
-      case 'high': return 'arrow-up-circle';
-      case 'medium': return 'remove-circle';
-      case 'low': return 'arrow-down-circle';
-      default: return 'ellipse-outline';
-    }
+    onSubmit({
+      title: sanitizeText(draft.title),
+      description: draft.description?.trim() ? sanitizeText(draft.description) : undefined,
+      deadline_at: draft.deadline_at,
+    });
+    resetAndClose();
   };
 
   return (
     <Modal
+      transparent
+      animationType="fade"
       visible={visible}
-      transparent={true}
-      animationType="slide"
-      onRequestClose={handleClose}
+      onRequestClose={resetAndClose}
     >
-      <Pressable
-        style={{
-          flex: 1,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          justifyContent: 'center',
-          alignItems: 'center',
-          padding: 20,
-        }}
-        onPress={handleClose}
-      >
-        <Pressable onPress={(e) => e.stopPropagation()}>
-          <GlassCard style={{ width: 400, maxWidth: '100%' }}>
-          <Text style={{
-            color: colors.text,
-            fontSize: 20,
-            fontWeight: 'bold',
-            marginBottom: 16,
-            textAlign: 'center',
-          }}>
-            Link a Quest
-          </Text>
-
-          {/* Tab Switcher */}
-          <View style={styles.tabContainer}>
-            <Pressable
-              onPress={() => setActiveTab('select')}
-              style={[
-                styles.tab,
-                activeTab === 'select' && { backgroundColor: colors.primary }
-              ]}
-            >
-              <Text style={[
-                styles.tabText,
-                { color: activeTab === 'select' ? colors.background : colors.textSecondary }
-              ]}>
-                Select Existing
+      <Pressable style={styles.backdrop} onPress={resetAndClose}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ width: '100%' }}
+        >
+          <Pressable onPress={e => e.stopPropagation()}>
+            <GlassCard style={styles.card} padding={24}>
+              <Text style={[styles.heading, { color: colors.text }]}>
+                {editMode ? 'Edit Quest' : 'Capture a new quest'}
               </Text>
-              {incompleteTasks.length > 0 && (
-                <View style={[styles.badge, { backgroundColor: activeTab === 'select' ? colors.background : colors.primary }]}>
-                  <Text style={[styles.badgeText, { color: activeTab === 'select' ? colors.primary : colors.background }]}>
-                    {incompleteTasks.length}
-                  </Text>
-                </View>
-              )}
-            </Pressable>
-            <Pressable
-              onPress={() => setActiveTab('create')}
-              style={[
-                styles.tab,
-                activeTab === 'create' && { backgroundColor: colors.primary }
-              ]}
-            >
-              <Text style={[
-                styles.tabText,
-                { color: activeTab === 'create' ? colors.background : colors.textSecondary }
-              ]}>
-                Create New
+              <Text style={{ color: colors.textSecondary, marginBottom: 18 }}>
+                {editMode ? 'Update your quest details below.' : 'Keep it short and vivid. Add a deadline if it keeps you accountable.'}
               </Text>
-            </Pressable>
-          </View>
 
-          {/* Select Existing Tab */}
-          {activeTab === 'select' && (
-            <View>
-              {incompleteTasks.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <Ionicons name="clipboard-outline" size={48} color={colors.textSecondary} />
-                  <Text style={{ color: colors.textSecondary, marginTop: 12, textAlign: 'center' }}>
-                    No tasks available
-                  </Text>
-                  <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4, textAlign: 'center' }}>
-                    Create a new task or add some from the Tasks tab
-                  </Text>
+              <FieldLabel color={colors.text}>What needs your attention?</FieldLabel>
+              <TextInput
+                value={draft.title}
+                onChangeText={value => handleChange('title', value)}
+                placeholder="e.g. Submit assignment"
+                placeholderTextColor={colors.textSecondary}
+                maxLength={200}
+                style={[
+                  styles.input,
+                  {
+                    color: colors.text,
+                    backgroundColor: colors.cardBackground,
+                    borderColor: errors.title ? '#EF4444' : colors.primary + '66',
+                  },
+                ]}
+              />
+              {errors.title ? <ErrorText message={errors.title} /> : null}
+
+              <FieldLabel color={colors.textSecondary}>Task description</FieldLabel>
+              <TextInput
+                value={draft.description ?? ''}
+                onChangeText={value => handleChange('description', value)}
+                placeholder="Add quick steps, context, or a reminder..."
+                placeholderTextColor={colors.textSecondary}
+                multiline
+                numberOfLines={4}
+                style={[
+                  styles.input,
+                  styles.multiline,
+                  {
+                    color: colors.text,
+                    backgroundColor: colors.cardBackground,
+                    borderColor: errors.description ? '#EF4444' : colors.primary + '66',
+                  },
+                ]}
+              />
+              {errors.description ? <ErrorText message={errors.description} /> : null}
+
+              <FieldLabel color={colors.textSecondary}>Deadline (optional)</FieldLabel>
+              {selectedDate ? (
+                <View style={styles.deadlineSelected}>
                   <Pressable
-                    onPress={() => setActiveTab('create')}
-                    style={{ marginTop: 16, paddingVertical: 8, paddingHorizontal: 16, backgroundColor: colors.primary, borderRadius: 8 }}
+                    onPress={() => setShowDatePicker(true)}
+                    style={[
+                      styles.deadlineButton,
+                      { backgroundColor: colors.cardBackground, borderColor: colors.primary + '66' }
+                    ]}
                   >
-                    <Text style={{ color: colors.background, fontWeight: '600' }}>Create New Task</Text>
+                    <Ionicons name="calendar" size={18} color={colors.primary} />
+                    <Text style={{ color: colors.text, fontWeight: '600', flex: 1 }}>
+                      {formatDeadlineDisplay(selectedDate)}
+                    </Text>
+                  </Pressable>
+                  <Pressable onPress={clearDeadline} style={styles.clearButton}>
+                    <Ionicons name="close-circle" size={22} color={colors.textSecondary} />
                   </Pressable>
                 </View>
               ) : (
-                <View>
-                  <ScrollView style={styles.taskList} showsVerticalScrollIndicator={false}>
-                  {incompleteTasks.map((task) => (
-                    <Pressable
-                      key={task.id}
-                      onPress={() => handleSelectTask(task)}
-                      style={({ pressed }) => [
-                        styles.taskItem,
-                        {
-                          backgroundColor: pressed ? colors.primary + '20' : colors.cardBackground,
-                          borderColor: colors.primary + '40',
-                        }
-                      ]}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                          <Ionicons
-                            name={getPriorityIcon(task.priority) as any}
-                            size={16}
-                            color={getPriorityColor(task.priority)}
-                            style={{ marginRight: 8 }}
-                          />
-                          <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600', flex: 1 }}>
-                            {task.title}
-                          </Text>
-                        </View>
-                        {task.notes && (
-                          <Text
-                            style={{ color: colors.textSecondary, fontSize: 12 }}
-                            numberOfLines={1}
-                          >
-                            {task.notes}
-                          </Text>
-                        )}
-                      </View>
-                      <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-                    </Pressable>
-                  ))}
-                </ScrollView>
-                </View>
+                <Pressable
+                  onPress={() => setShowDatePicker(true)}
+                  style={[
+                    styles.deadlineButton,
+                    { backgroundColor: colors.cardBackground, borderColor: colors.primary + '33' }
+                  ]}
+                >
+                  <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} />
+                  <Text style={{ color: colors.textSecondary, flex: 1 }}>
+                    Set a deadline
+                  </Text>
+                </Pressable>
+              )}
+              {errors.deadline_at ? <ErrorText message={errors.deadline_at} /> : null}
+
+              {showDatePicker && (
+                <DateTimePicker
+                  value={selectedDate || new Date()}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={handleDateChange}
+                  minimumDate={new Date()}
+                  themeVariant="dark"
+                />
               )}
 
-              <Pressable
-                onPress={handleClose}
-                style={{
-                  backgroundColor: colors.cardBackground,
-                  paddingVertical: 12,
-                  borderRadius: 8,
-                  alignItems: 'center',
-                  marginTop: 16,
-                }}
-              >
-                <Text style={{ color: colors.text, fontWeight: '600' }}>Cancel</Text>
-              </Pressable>
-            </View>
-          )}
-
-          {/* Create New Tab */}
-          {activeTab === 'create' && (
-            <View>
-
-          <Text style={{ color: colors.textSecondary, marginBottom: 8 }}>
-            What needs your attention?
-          </Text>
-          <TextInput
-            value={title}
-            onChangeText={(text) => {
-              setTitle(text);
-              // Clear error when user starts typing
-              if (errors.title) setErrors(prev => ({ ...prev, title: '' }));
-            }}
-            placeholder="Enter task title..."
-            placeholderTextColor={colors.textSecondary}
-            maxLength={VALIDATION.TASK_TITLE_MAX}
-            style={{
-              backgroundColor: colors.cardBackground,
-              borderWidth: 1,
-              borderColor: errors.title ? '#EF4444' : colors.primary,
-              borderRadius: 8,
-              padding: 12,
-              color: colors.text,
-              marginBottom: errors.title ? 4 : 16,
-            }}
-          />
-          {errors.title ? (
-            <Text style={{ color: '#EF4444', fontSize: 12, marginBottom: 12 }}>
-              {errors.title}
-            </Text>
-          ) : null}
-
-          <Text style={{ color: colors.textSecondary, marginBottom: 8 }}>
-            Add notes, steps, or context (optional)
-          </Text>
-          <TextInput
-            value={notes}
-            onChangeText={(text) => {
-              setNotes(text);
-              // Clear error when user starts typing
-              if (errors.notes) setErrors(prev => ({ ...prev, notes: '' }));
-            }}
-            placeholder="Add any additional details..."
-            placeholderTextColor={colors.textSecondary}
-            multiline
-            numberOfLines={3}
-            maxLength={VALIDATION.TASK_NOTES_MAX}
-            style={{
-              backgroundColor: colors.cardBackground,
-              borderWidth: 1,
-              borderColor: errors.notes ? '#EF4444' : colors.primary,
-              borderRadius: 8,
-              padding: 12,
-              color: colors.text,
-              marginBottom: errors.notes ? 4 : 20,
-              textAlignVertical: 'top',
-            }}
-          />
-          {errors.notes ? (
-            <Text style={{ color: '#EF4444', fontSize: 12, marginBottom: 16 }}>
-              {errors.notes}
-            </Text>
-          ) : null}
-
-          <View style={{ flexDirection: 'row', gap: 12 }}>
-            <Pressable
-              onPress={handleClose}
-              style={{
-                flex: 1,
-                backgroundColor: colors.cardBackground,
-                paddingVertical: 12,
-                borderRadius: 8,
-                alignItems: 'center',
-              }}
-            >
-              <Text style={{ color: colors.text, fontWeight: '600' }}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              onPress={handleAdd}
-              disabled={!title.trim()}
-              style={{
-                flex: 1,
-                backgroundColor: !title.trim() ? colors.cardBackground : colors.primary,
-                paddingVertical: 12,
-                borderRadius: 8,
-                alignItems: 'center',
-                opacity: !title.trim() ? 0.5 : 1,
-              }}
-            >
-              <Text style={{
-                color: !title.trim() ? colors.textSecondary : colors.background,
-                fontWeight: '600'
-              }}>
-                Add quest
-              </Text>
-            </Pressable>
-          </View>
-
-            </View>
-          )}
-        </GlassCard>
-        </Pressable>
+              <View style={styles.actions}>
+                <Pressable
+                  onPress={resetAndClose}
+                  style={[
+                    styles.secondaryAction,
+                    { borderColor: colors.primary + '55', backgroundColor: colors.cardBackground },
+                  ]}
+                >
+                  <Text style={{ color: colors.text, fontWeight: '600' }}>Close</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleSubmit}
+                  style={[
+                    styles.primaryAction,
+                    { backgroundColor: colors.primary },
+                  ]}
+                >
+                  <Text style={{ color: colors.background, fontWeight: '700' }}>
+                    {editMode ? 'Update quest' : 'Save quest'}
+                  </Text>
+                </Pressable>
+              </View>
+            </GlassCard>
+          </Pressable>
+        </KeyboardAvoidingView>
       </Pressable>
     </Modal>
   );
 };
 
+const FieldLabel: React.FC<{ color: string; children: React.ReactNode }> = ({ color, children }) => (
+  <Text style={{ color, fontSize: 13, fontWeight: '600', marginBottom: 8 }}>{children}</Text>
+);
+
+const ErrorText: React.FC<{ message?: string }> = ({ message }) => {
+  if (!message) return null;
+  return (
+    <Text style={{ color: '#EF4444', fontSize: 12, marginBottom: 12 }}>
+      {message}
+    </Text>
+  );
+};
+
 const styles = StyleSheet.create({
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(30, 41, 59, 0.5)',
-    borderRadius: 8,
-    padding: 4,
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(4,10,25,0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  card: {
+    width: 400,
+    maxWidth: '100%',
+  },
+  heading: {
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     marginBottom: 16,
   },
-  tab: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 6,
+  multiline: {
+    minHeight: 96,
+    textAlignVertical: 'top',
   },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  badge: {
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-  },
-  badgeText: {
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  emptyState: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  taskList: {
-    maxHeight: 300,
-    marginBottom: 8,
-  },
-  taskItem: {
+  deadlineSelected: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
+    gap: 8,
+    marginBottom: 16,
+  },
+  deadlineButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flex: 1,
+  },
+  clearButton: {
+    padding: 4,
+  },
+  actions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+    marginTop: 16,
+  },
+  secondaryAction: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  primaryAction: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
   },
 });

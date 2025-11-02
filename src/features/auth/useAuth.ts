@@ -231,51 +231,34 @@ export function useAuth() {
       console.log('✅ Google OAuth initiated, opening browser...');
       console.log('🔗 OAuth URL:', data.url);
 
-      // Actually open the browser with the OAuth URL
+      // Open the browser with the OAuth URL
+      // The deep link handler will process the callback when the user is redirected back
       const result = await WebBrowser.openAuthSessionAsync(
         data.url,
         redirectTo
       );
 
-      console.log('📱 Browser result:', result.type);
+      console.log('📱 Browser result type:', result.type);
 
-      if (result.type === 'success' && result.url) {
-        console.log('✅ OAuth success! Processing callback...');
-        console.log('🔗 Callback URL:', result.url);
-
-        // Extract tokens from the callback URL
-        const { access_token, refresh_token } = extractTokensFromUrl(result.url);
-
-        if (access_token && refresh_token) {
-          try {
-            // Set the session with the tokens from OAuth callback
-            const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-              access_token,
-              refresh_token,
-            });
-
-            if (sessionError) {
-              console.error('❌ Error setting session:', sessionError);
-              return { error: sessionError };
-            }
-
-            console.log('✅ Session established successfully:', sessionData.user?.email);
-            return { data: sessionData, error: null };
-          } catch (err: any) {
-            console.error('❌ Exception setting session:', err);
-            return { error: err };
-          }
-        } else {
-          console.error('❌ No tokens found in callback URL');
-          return { error: new Error('No authentication tokens received') };
-        }
-      } else if (result.type === 'cancel') {
+      // Handle user cancellation
+      if (result.type === 'cancel') {
         console.log('⚠️ User cancelled OAuth');
         return { error: new Error('User cancelled sign in') };
-      } else {
-        console.log('⚠️ OAuth did not complete:', result.type);
-        return { error: new Error('OAuth flow did not complete') };
       }
+
+      // For success or dismiss, the deep link handler will process the tokens
+      // We just need to return success here - the actual session will be set by handleDeepLink
+      if (result.type === 'success' || result.type === 'dismiss') {
+        console.log('✅ OAuth browser flow completed, waiting for deep link callback...');
+
+        // Give the deep link handler a moment to process the callback
+        // The auth state change listener will update the session
+        return { data: null, error: null };
+      }
+
+      // Any other result type is unexpected
+      console.log('⚠️ Unexpected OAuth result type:', result.type);
+      return { error: new Error('OAuth flow returned unexpected result') };
     } catch (err: any) {
       console.error('❌ Google sign in exception:', err);
       return { error: err };

@@ -12,7 +12,8 @@
       "WebSearch",
       "WebFetch(domain:supabase.com)",
       "Bash(npx expo config:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [],
     "ask": []

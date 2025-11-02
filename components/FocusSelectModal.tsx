@@ -167,7 +167,11 @@ export const FocusSelectModal: React.FC<FocusSelectModalProps> = ({
                     </Text>
                   </View>
                 ) : (
-                  <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+                  <ScrollView
+                    style={styles.list}
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={{ paddingBottom: 8 }}
+                  >
                     {incompleteTasks.map((task) => {
                       const isSelected = selectedTaskIds.has(task.id);
                       return (
@@ -222,7 +226,11 @@ export const FocusSelectModal: React.FC<FocusSelectModalProps> = ({
                     </Text>
                   </View>
                 ) : (
-                  <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+                  <ScrollView
+                    style={styles.list}
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={{ paddingBottom: 8 }}
+                  >
                     {habits.map((habit) => {
                       const isSelected = selectedHabitIds.has(habit.id);
                       const attr = FOCUS_ATTRIBUTES[habit.focus_attribute];
@@ -277,28 +285,23 @@ export const FocusSelectModal: React.FC<FocusSelectModalProps> = ({
             {/* Footer */}
             <View style={styles.footer}>
               <Pressable
-                onPress={handleClose}
-                style={[styles.button, styles.cancelButton, { borderColor: colors.primary }]}
-              >
-                <Text style={{ color: colors.text, fontWeight: '600' }}>Cancel</Text>
-              </Pressable>
-              <Pressable
                 onPress={handleConfirm}
                 disabled={totalSelected === 0}
                 style={[
-                  styles.button,
                   styles.confirmButton,
                   {
                     backgroundColor: totalSelected === 0 ? colors.cardBackground : colors.primary,
                     opacity: totalSelected === 0 ? 0.5 : 1,
+                    borderColor: totalSelected === 0 ? colors.primary + '30' : colors.primary,
                   }
                 ]}
               >
                 <Text style={{
                   color: totalSelected === 0 ? colors.textSecondary : colors.background,
-                  fontWeight: '600'
+                  fontWeight: '700',
+                  fontSize: 16,
                 }}>
-                  Confirm ({totalSelected})
+                  {totalSelected === 0 ? 'Select items to continue' : `Confirm (${totalSelected} selected)`}
                 </Text>
               </Pressable>
             </View>
@@ -321,12 +324,12 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: '95%',
     minWidth: 320,
-    maxHeight: '85%',
+    maxHeight: '80%',
   },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 16,
+    marginBottom: 12,
     textAlign: 'center',
   },
   tabContainer: {
@@ -334,7 +337,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(30, 41, 59, 0.5)',
     borderRadius: 8,
     padding: 4,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   tab: {
     flex: 1,
@@ -363,13 +366,13 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   content: {
-    minHeight: 300,
-    maxHeight: 400,
+    minHeight: 200,
+    maxHeight: 300,
   },
   emptyState: {
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 60,
+    paddingVertical: 40,
   },
   list: {
     flex: 1,
@@ -377,10 +380,10 @@ const styles = StyleSheet.create({
   item: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
-    borderWidth: 1,
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 6,
+    borderWidth: 1.5,
   },
   itemContent: {
     flexDirection: 'row',
@@ -402,21 +405,18 @@ const styles = StyleSheet.create({
   },
   footer: {
     flexDirection: 'row',
-    gap: 12,
+    justifyContent: 'flex-end',
     marginTop: 16,
-  },
-  button: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
   confirmButton: {
-    // backgroundColor set dynamically
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: 'center',
   },
 });
-

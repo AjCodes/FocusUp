@@ -35,12 +35,12 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
   const marginHorizontal = 16;
   const availableWidth = screenWidth - marginHorizontal * 2;
   const tabCount = visibleRoutes.length;
-  const preferredTabWidth = 92;
+  const preferredTabWidth = 88;
   const tabBarWidth = Math.min(availableWidth, preferredTabWidth * tabCount);
   const tabWidth = tabBarWidth / tabCount;
   const maxShellWidth = Math.min(availableWidth, tabBarWidth + 12);
   const horizontalPadding = Math.max((maxShellWidth - tabBarWidth) / 2, 0);
-  const containerHeight = 56;
+  const containerHeight = 48;
   const indicatorWidth = tabWidth;
   const indicatorHeight = containerHeight;
   const translateInputRange = visibleRoutes.map((_: any, idx: number) => idx);
@@ -73,7 +73,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
         backgroundColor: 'rgba(15, 23, 42, 0.88)',
         borderRadius: containerHeight / 2 + 3,
         marginHorizontal,
-        marginBottom: 24,
+        marginBottom: 16,
         height: containerHeight,
         flexDirection: 'row',
         position: 'absolute',
@@ -81,10 +81,10 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
         alignSelf: 'center',
         width: maxShellWidth,
         shadowColor: colors.primary,
-        shadowOffset: { width: 0, height: 10 },
+        shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.25,
-        shadowRadius: 18,
-        elevation: 14,
+        shadowRadius: 16,
+        elevation: 12,
         overflow: 'hidden',
         paddingHorizontal: horizontalPadding,
       }}
@@ -129,7 +129,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
             })}
           >
             <Text style={{
-              fontSize: isFocused ? 16 : 15,
+              fontSize: isFocused ? 15 : 14,
               fontWeight: isFocused ? '700' : '500',
               color: isFocused ? '#F1F5F9' : '#94A3B8',
               textAlign: 'center',

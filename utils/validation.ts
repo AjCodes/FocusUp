@@ -105,14 +105,14 @@ export const validateHabitCue = (cue: string): ValidationResult => {
 };
 
 /**
- * Validates notes field
+ * Validates task description field
  */
-export const validateNotes = (notes: string): ValidationResult => {
-  if (!notes || !notes.trim()) {
-    return { isValid: true }; // Notes are optional
+export const validateDescription = (description: string): ValidationResult => {
+  if (!description || !description.trim()) {
+    return { isValid: true }; // Description is optional
   }
 
-  return validateText(notes, 'Notes', {
+  return validateText(description, 'Description', {
     required: false,
     minLength: 1,
     maxLength: 1000,

@@ -12,11 +12,16 @@ export async function getTasks(userId: string): Promise<Task[]> {
   return (data ?? []) as Task[];
 }
 
-export async function createTask(userId: string, title: string, notes?: string): Promise<Task> {
+export async function createTask(userId: string, title: string, description?: string, deadline_at?: string | null): Promise<Task> {
   if (!supabase) throw new Error('Supabase not initialized');
   const { data, error } = await supabase
     .from('tasks')
-    .insert({ user_id: userId, title: title.trim(), notes: notes ?? null })
+    .insert({
+      user_id: userId,
+      title: title.trim(),
+      description: description ?? null,
+      deadline_at: deadline_at ?? null,
+    })
     .select()
     .single();
   if (error) throw error;

@@ -11,6 +11,7 @@ import {
   Animated,
   StyleSheet,
   Image,
+  Easing,
 } from 'react-native';
 import { useAuth } from '../../src/features/auth/useAuth';
 import { useRouter } from 'expo-router';
@@ -34,19 +35,31 @@ export default function Register() {
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const formSlide = useRef(new Animated.Value(30)).current;
 
   useEffect(() => {
-    // Fade-in animation
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
+    // Sophisticated staggered entrance animations
+    Animated.sequence([
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 600,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          friction: 9,
+          tension: 50,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.spring(formSlide, {
         toValue: 0,
-        duration: 800,
+        friction: 9,
+        tension: 50,
+        delay: 50,
         useNativeDriver: true,
       }),
     ]).start();
@@ -153,7 +166,7 @@ export default function Register() {
           >
             {/* Header with Gradient Background */}
             <LinearGradient
-              colors={['#6366F1', '#8B5CF6', '#A855F7']}
+              colors={['#14B8A6', '#06B6D4', '#0EA5E9']}
               style={styles.headerGradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -162,22 +175,22 @@ export default function Register() {
                 onPress={() => router.back()}
                 style={styles.backButton}
               >
-                <Ionicons name="arrow-back" size={24} color="#FFF" />
+                <Ionicons name="arrow-back" size={26} color="#FFF" />
               </Pressable>
-              <View style={styles.logoContainer}>
-                <Image
-                  source={require('../../assets/logo.png')}
-                  style={styles.logo}
-                  resizeMode="contain"
-                />
-                <Text style={styles.logoText}>FocusUp</Text>
-              </View>
             </LinearGradient>
 
             {/* White Card with Form */}
-            <View style={styles.formCard}>
-              <Text style={styles.welcomeTitle}>Get started free.</Text>
-              <Text style={styles.welcomeSubtitle}>Free forever. No credit card needed.</Text>
+            <Animated.View
+              style={[
+                styles.formCard,
+                {
+                  opacity: fadeAnim,
+                  transform: [{ translateY: formSlide }],
+                }
+              ]}
+            >
+              <Text style={styles.welcomeTitle}>Create Your Account</Text>
+              <Text style={styles.welcomeSubtitle}>Start your focus journey today</Text>
 
               {/* Form */}
               <View style={styles.formContainer}>
@@ -315,7 +328,7 @@ export default function Register() {
 
               {/* Create Account Button */}
               <LinearGradient
-                colors={['#6366F1', '#8B5CF6', '#A855F7']}
+                colors={['#14B8A6', '#06B6D4', '#0EA5E9']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.primaryButton}
@@ -325,7 +338,7 @@ export default function Register() {
                   disabled={loading}
                   style={({ pressed }) => [
                     styles.primaryButtonInner,
-                    pressed && styles.buttonPressed,
+                    pressed && styles.primaryButtonPressed,
                   ]}
                 >
                   {loading ? (
@@ -344,7 +357,7 @@ export default function Register() {
                 </Pressable>
               </View>
             </View>
-            </View>
+            </Animated.View>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -378,55 +391,47 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerGradient: {
-    paddingTop: 60,
-    paddingBottom: 40,
+    paddingTop: 70,
+    paddingBottom: 80,
     paddingHorizontal: 24,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
   },
   backButton: {
     position: 'absolute',
     top: 60,
     left: 24,
     zIndex: 10,
-  },
-  logoContainer: {
-    alignItems: 'center',
-  },
-  logo: {
-    width: 80,
-    height: 80,
-    marginBottom: 12,
-  },
-  logoText: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 12,
+    padding: 8,
   },
   formCard: {
     backgroundColor: '#FFFFFF',
     margin: 24,
-    marginTop: -20,
-    borderRadius: 24,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 5,
+    marginTop: -40,
+    borderRadius: 28,
+    padding: 28,
+    shadowColor: '#14B8A6',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
   },
   welcomeTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 26,
+    fontWeight: '800',
     color: '#1F2937',
     marginBottom: 8,
     textAlign: 'center',
+    letterSpacing: 0.3,
   },
   welcomeSubtitle: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#6B7280',
-    marginBottom: 24,
+    marginBottom: 28,
     textAlign: 'center',
+    fontWeight: '400',
   },
   formContainer: {
     width: '100%',
@@ -531,22 +536,29 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   primaryButton: {
-    borderRadius: 12,
+    borderRadius: 14,
     marginBottom: 20,
     overflow: 'hidden',
+    shadowColor: '#14B8A6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   primaryButtonInner: {
-    paddingVertical: 16,
+    paddingVertical: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  primaryButtonPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.98 }],
+  },
   primaryButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  buttonPressed: {
-    opacity: 0.8,
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   signInContainer: {
     flexDirection: 'row',
@@ -555,11 +567,11 @@ const styles = StyleSheet.create({
   },
   signInText: {
     color: '#6B7280',
-    fontSize: 14,
+    fontSize: 15,
   },
   signInLink: {
-    color: '#6366F1',
-    fontSize: 14,
-    fontWeight: '600',
+    color: '#14B8A6',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

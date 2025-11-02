@@ -1,30 +1,28 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, TextInput, Pressable, FlatList, ActivityIndicator, Alert, StyleSheet } from "react-native";
+import { View, Text, Pressable, FlatList, ActivityIndicator, StyleSheet, Alert } from "react-native";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../src/features/auth/useAuth";
 import { useTheme } from "../../components/ThemeProvider";
 import { GlassCard } from "../../components/GlassCard";
-import { TopBar } from "../../components/TopBar";
-import { useUserStats } from "../../hooks/useUserStats";
 import { Task } from "../../types/supabase";
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { handleError, showSuccess, handleSupabaseError } from "../../utils/errorHandler";
+import { handleError, showSuccess } from "../../utils/errorHandler";
 import { useLoading } from "../../hooks/useLoading";
-import { validateTaskTitle, sanitizeText } from "../../utils/validation";
-import { REWARDS, STORAGE_KEYS, VALIDATION } from "../../src/constants/app";
+import { STORAGE_KEYS } from "../../src/constants/app";
 import { useAppData } from "../../store/appData";
 import { Ionicons } from "@expo/vector-icons";
 import { SwipeableRow } from "../../components/SwipeableRow";
+import { AddTaskModal, TaskDraft } from "../../components/AddTaskModal";
 
 export default function Tasks() {
   const { colors } = useTheme();
-  const { userStats, addCoins } = useUserStats();
   const { session } = useAuth();
   const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active');
-  const [title, setTitle] = useState("");
-  const [inputError, setInputError] = useState("");
   const { loading, withLoading } = useLoading(true);
   const [operationLoading, setOperationLoading] = useState<Record<string, boolean>>({});
+  const [showComposer, setShowComposer] = useState(false);
+  const [creatingTask, setCreatingTask] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   // Use appData store
   const allTasks = useAppData(state => state.tasks);
@@ -63,45 +61,53 @@ export default function Tasks() {
     })());
   }
 
-  async function add() {
-    // Clear previous error
-    setInputError("");
-
-    // Validate input
-    const validation = validateTaskTitle(title);
-    if (!validation.isValid) {
-      setInputError(validation.error || '');
-      return;
-    }
-
-    const sanitizedTitle = sanitizeText(title);
-
-    setOperationLoading(prev => ({ ...prev, add: true }));
+  const handleCreateTask = async (draft: TaskDraft) => {
+    setCreatingTask(true);
     try {
       const userId = session?.user?.id ?? await getUserId();
-      // Create task - this already does optimistic update
-      await createTask(userId, sanitizedTitle);
-      
-      // Clear input immediately
-      setTitle("");
-      showSuccess('Quest added!', 'Complete it during a sprint to earn coins');
-      
-      // Refresh after a short delay to ensure database sync (for authenticated users)
-      // This won't overwrite the optimistic update due to duplicate checking
+      await createTask(userId, draft.title, draft.description, draft.deadline_at ?? null);
+      showSuccess('Quest added!', 'Lock it into a sprint to earn rewards.');
+
       setTimeout(async () => {
         try {
           await refreshAll(userId);
         } catch (err) {
-          // Silent fail - optimistic update already showed the item
           console.warn('Background refresh failed:', err);
         }
-      }, 500);
+      }, 300);
     } catch (error) {
       handleError(error, 'Add task');
     } finally {
-      setOperationLoading(prev => ({ ...prev, add: false }));
+      setCreatingTask(false);
     }
-  }
+  };
+
+  const handleEditTask = async (draft: TaskDraft) => {
+    if (!editingTask) return;
+    setCreatingTask(true);
+    try {
+      const userId = session?.user?.id ?? await getUserId();
+      await updateTask(editingTask.id, {
+        title: draft.title,
+        description: draft.description || null,
+        deadline_at: draft.deadline_at,
+      }, userId);
+      showSuccess('Quest updated!');
+      setEditingTask(null);
+
+      setTimeout(async () => {
+        try {
+          await refreshAll(userId);
+        } catch (err) {
+          console.warn('Background refresh failed:', err);
+        }
+      }, 300);
+    } catch (error) {
+      handleError(error, 'Update task');
+    } finally {
+      setCreatingTask(false);
+    }
+  };
 
   async function toggle(task: Task) {
     setOperationLoading(prev => ({ ...prev, [task.id]: true }));
@@ -158,8 +164,43 @@ export default function Tasks() {
 
   useEffect(() => { load(); }, []);
 
+  const formatDeadline = (value?: string | null) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const dateStr = parsed.toDateString();
+    if (dateStr === today.toDateString()) return 'Today';
+    if (dateStr === tomorrow.toDateString()) return 'Tomorrow';
+
+    return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  };
+
+  const getDeadlineColor = (deadline?: string | null) => {
+    if (!deadline) return colors.textSecondary;
+
+    const deadlineDate = new Date(deadline);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    deadlineDate.setHours(0, 0, 0, 0);
+
+    const diffTime = deadlineDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) return '#EF4444'; // Overdue - red
+    if (diffDays === 0) return '#F59E0B'; // Today - amber
+    if (diffDays === 1) return '#F59E0B'; // Tomorrow - amber
+    if (diffDays <= 3) return '#10B981'; // Due soon - green
+    return colors.textSecondary; // Future - gray
+  };
+
   const renderTask = ({ item: task }: { item: Task }) => {
     const isLoading = operationLoading[task.id];
+    const deadlineLabel = formatDeadline(task.deadline_at);
 
     return (
       <SwipeableRow
@@ -172,42 +213,96 @@ export default function Tasks() {
         leftIcon="trash"
         disabled={isLoading}
       >
-        <GlassCard style={{ marginVertical: 4, opacity: isLoading ? 0.6 : 1 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <GlassCard style={{ marginVertical: 6, opacity: isLoading ? 0.6 : 1 }} padding={20}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16 }}>
             <Pressable
               onPress={() => toggle(task)}
               disabled={isLoading}
               style={{
-                width: 24,
-                height: 24,
-                borderRadius: 12,
-                backgroundColor: task.done ? colors.success : colors.cardBackground,
+                width: 38,
+                height: 38,
+                borderRadius: 19,
+                backgroundColor: task.done ? colors.success : `${colors.background}35`,
                 borderWidth: 2,
-                borderColor: task.done ? colors.success : colors.primary,
+                borderColor: task.done ? colors.success : `${colors.primary}55`,
                 justifyContent: 'center',
                 alignItems: 'center',
+                shadowColor: colors.primary,
+                shadowOpacity: task.done ? 0.3 : 0.12,
+                shadowRadius: 6,
+                elevation: task.done ? 5 : 0,
               }}
             >
               {isLoading ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : task.done ? (
-                <Text style={{ color: colors.background, fontSize: 14, fontWeight: 'bold' }}>✓</Text>
-              ) : null}
+                <ActivityIndicator size="small" color={task.done ? colors.background : colors.primary} />
+              ) : (
+                <Ionicons
+                  name={task.done ? 'checkmark' : 'ellipse-outline'}
+                  size={20}
+                  color={task.done ? colors.background : `${colors.primary}AA`}
+                />
+              )}
             </Pressable>
-            <Text style={{
-              flex: 1,
-              color: colors.text,
-              textDecorationLine: task.done ? "line-through" : "none",
-              opacity: task.done ? 0.6 : 1,
-            }}>
-              {task.title}
-            </Text>
+            <Pressable style={{ flex: 1, gap: 8 }} onPress={() => setEditingTask(task)}>
+              <Text
+                style={{
+                  color: colors.text,
+                  fontSize: 17,
+                  fontWeight: '600',
+                  textDecorationLine: task.done ? 'line-through' : 'none',
+                  opacity: task.done ? 0.6 : 1,
+                }}
+              >
+                {task.title}
+              </Text>
+              {task.description ? (
+                <Text style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 18 }}>
+                  {task.description}
+                </Text>
+              ) : null}
+              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                {!task.done && (
+                  <View
+                    style={{
+                      backgroundColor: `${colors.primary}18`,
+                      borderRadius: 16,
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                      Tap card to edit
+                    </Text>
+                  </View>
+                )}
+                {deadlineLabel && (
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      backgroundColor: `${getDeadlineColor(task.deadline_at)}22`,
+                      borderRadius: 16,
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderWidth: 1,
+                      borderColor: `${getDeadlineColor(task.deadline_at)}44`,
+                    }}
+                  >
+                    <Ionicons name="calendar" size={14} color={getDeadlineColor(task.deadline_at)} />
+                    <Text style={{ color: getDeadlineColor(task.deadline_at), fontSize: 12, fontWeight: '700' }}>
+                      {deadlineLabel}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </Pressable>
             <Pressable
               onPress={() => remove(task)}
               disabled={isLoading}
               style={{
                 padding: 8,
-                borderRadius: 8,
+                borderRadius: 12,
                 backgroundColor: colors.cardBackground,
                 justifyContent: 'center',
                 alignItems: 'center',
@@ -224,7 +319,7 @@ export default function Tasks() {
   const tasksToShow = activeTab === 'active' ? activeTasks : completedTasks;
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#1E293B' }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <View style={{ flex: 1, padding: 16, paddingTop: 60 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>
@@ -236,7 +331,7 @@ export default function Tasks() {
         </View>
         
         {/* Tab Bar */}
-        <View style={[styles.tabContainer, { backgroundColor: colors.cardBackground + '80', borderColor: colors.primary + '40' }]}>
+        <View style={[styles.tabContainer, { backgroundColor: colors.cardBackground, borderColor: colors.primary + '33' }]}>
           <Pressable
             onPress={() => setActiveTab('active')}
             style={[
@@ -266,59 +361,9 @@ export default function Tasks() {
             </Text>
           </Pressable>
         </View>
-        <Text style={{ color: colors.textSecondary, marginBottom: 12, fontSize: 16 }}>
+        <Text style={{ color: colors.textSecondary, marginBottom: 16, fontSize: 16 }}>
           Capture quests, stack your streak, and trade victories for loot.
         </Text>
-        <GlassCard style={{ marginBottom: 20 }}>
-          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-            <TextInput
-              value={title}
-              onChangeText={(text) => {
-                setTitle(text);
-                if (inputError) setInputError("");
-              }}
-              placeholder="What needs your attention?"
-              placeholderTextColor={colors.textSecondary}
-              maxLength={VALIDATION.TASK_TITLE_MAX}
-              style={{
-                flex: 1,
-                padding: 10,
-                backgroundColor: colors.cardBackground,
-                borderWidth: 1,
-                borderColor: inputError ? '#EF4444' : colors.primary,
-                borderRadius: 8,
-                color: colors.text,
-                fontSize: 14,
-              }}
-              onSubmitEditing={add}
-              returnKeyType="done"
-            />
-            <Pressable
-              onPress={add}
-              disabled={operationLoading.add || !title.trim()}
-              style={{
-                backgroundColor: operationLoading.add || !title.trim() ? colors.cardBackground : colors.primary,
-                paddingHorizontal: 14,
-                paddingVertical: 10,
-                borderRadius: 8,
-                opacity: operationLoading.add || !title.trim() ? 0.5 : 1,
-              }}
-            >
-              {operationLoading.add ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <Text style={{ color: !title.trim() ? colors.textSecondary : colors.background, fontWeight: '600', fontSize: 14 }}>
-                  Add
-                </Text>
-              )}
-            </Pressable>
-          </View>
-          {inputError ? (
-            <Text style={{ color: '#EF4444', fontSize: 12, marginTop: 4 }}>
-              {inputError}
-            </Text>
-          ) : null}
-        </GlassCard>
         {!supabase ? (
           <GlassCard>
             <Text style={{ color: colors.textSecondary, textAlign: 'center' }}>
@@ -349,9 +394,43 @@ export default function Tasks() {
             renderItem={renderTask}
             keyExtractor={(item) => item.id}
             showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 140, paddingTop: 4 }}
           />
         )}
       </View>
+      <Pressable
+        onPress={() => setShowComposer(true)}
+        disabled={creatingTask}
+        style={[
+          styles.fab,
+          {
+            backgroundColor: `${colors.primary}`,
+            shadowColor: colors.primary,
+          },
+        ]}
+      >
+        {creatingTask ? (
+          <ActivityIndicator color={colors.background} />
+        ) : (
+          <Ionicons name="add" size={26} color={colors.background} />
+        )}
+      </Pressable>
+      <AddTaskModal
+        visible={showComposer}
+        onClose={() => setShowComposer(false)}
+        onSubmit={handleCreateTask}
+      />
+      <AddTaskModal
+        visible={!!editingTask}
+        onClose={() => setEditingTask(null)}
+        onSubmit={handleEditTask}
+        initialValues={editingTask ? {
+          title: editingTask.title,
+          description: editingTask.description || '',
+          deadline_at: editingTask.deadline_at,
+        } : undefined}
+        editMode={true}
+      />
     </View>
   );
 }
@@ -375,6 +454,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  fab: {
+    position: 'absolute',
+    bottom: 80,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 10,
+  },
 });
-
-

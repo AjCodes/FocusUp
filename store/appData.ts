@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 import type { Task, Habit, FocusSession, FocusSessionTask, FocusSessionHabit, RewardEvent } from '../types/supabase';
 import { RewardEngine } from '../src/features/rewards/RewardEngine';
@@ -37,11 +38,12 @@ interface AppDataState {
   getSessionHabits: (sessionId: string, userId: string) => Promise<FocusSessionHabit[]>;
   
   // Task/Habit mutations (for optimistic updates)
-  createTask: (userId: string, title: string, notes?: string) => Promise<Task>;
+  createTask: (userId: string, title: string, description?: string, deadline_at?: string | null) => Promise<Task>;
   updateTask: (taskId: string, updates: Partial<Task>, userId: string) => Promise<void>;
   deleteTask: (taskId: string, userId: string) => Promise<void>;
   
   createHabit: (userId: string, title: string, cue: string | null, focusAttribute: AttributeKey) => Promise<Habit>;
+  updateHabit: (habitId: string, updates: Partial<Habit>, userId: string) => Promise<void>;
   deleteHabit: (habitId: string, userId: string) => Promise<void>;
   
   logRewardEvent: (userId: string, sessionId: string, type: 'coins' | 'xp', amount: number, attribute?: AttributeKey) => Promise<void>;
@@ -512,7 +514,7 @@ export const useAppData = create<AppDataState>((set, get) => ({
     }
   },
 
-  createTask: async (userId: string, title: string, notes?: string) => {
+  createTask: async (userId: string, title: string, description?: string, deadline_at?: string | null) => {
     try {
       // Check if userId is a valid UUID (authenticated user) or guest
       const isUuid = /^[0-9a-fA-F-]{36}$/.test(userId);
@@ -526,7 +528,8 @@ export const useAppData = create<AppDataState>((set, get) => ({
           completed_at: null,
           created_at: new Date().toISOString(),
           user_id: userId,
-          notes: notes || null,
+          description: description || null,
+          deadline_at: deadline_at || null,
         };
         set(state => ({ tasks: [newTask, ...state.tasks] }));
         return newTask;
@@ -537,7 +540,8 @@ export const useAppData = create<AppDataState>((set, get) => ({
         .insert({
           user_id: userId, // This should match auth.uid()::text per RLS
           title: title.trim(),
-          notes: notes || null,
+          description: description || null,
+          deadline_at: deadline_at || null,
           done: false,
         })
         .select()
@@ -575,7 +579,10 @@ export const useAppData = create<AppDataState>((set, get) => ({
         ),
       }));
 
-      if (supabase && userId) {
+      // Check if taskId is a UUID (authenticated task) or local ID (guest task)
+      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i.test(taskId);
+
+      if (supabase && userId && isUuid) {
         const { error } = await supabase
           .from('tasks')
           .update(updates)
@@ -583,11 +590,47 @@ export const useAppData = create<AppDataState>((set, get) => ({
           .eq('user_id', userId);
 
         if (error) {
+          const includesCompletedAt = Object.prototype.hasOwnProperty.call(updates, 'completed_at');
+          const missingColumn = error.code === 'PGRST204' && includesCompletedAt;
+
+          if (missingColumn) {
+            const { completed_at: _ignored, ...fallbackUpdates } = updates;
+
+            if (Object.keys(fallbackUpdates).length > 0) {
+              console.warn(
+                "Supabase 'tasks' table missing completed_at column. Retrying update without it."
+              );
+
+              const { error: fallbackError } = await supabase
+                .from('tasks')
+                .update(fallbackUpdates)
+                .eq('id', taskId)
+                .eq('user_id', userId);
+
+              if (!fallbackError) {
+                return;
+              }
+
+              console.error('Fallback task update failed:', fallbackError);
+            } else {
+              // Nothing else to update; treat as handled.
+              return;
+            }
+          }
+
           // Rollback
           set(state => ({
             tasks: state.tasks.map(t => (t.id === taskId ? optimisticTask : t)),
           }));
           throw error;
+        }
+      } else if (!isUuid) {
+        // Guest mode task - save to AsyncStorage
+        try {
+          const allTasks = get().tasks;
+          await AsyncStorage.setItem(`tasks-${userId}`, JSON.stringify(allTasks));
+        } catch (storageError) {
+          console.warn('Failed to save task to AsyncStorage:', storageError);
         }
       }
     } catch (error: any) {
@@ -607,7 +650,10 @@ export const useAppData = create<AppDataState>((set, get) => ({
         tasks: state.tasks.filter(t => t.id !== taskId),
       }));
 
-      if (supabase && userId) {
+      // Check if taskId is a UUID (authenticated task) or local ID (guest task)
+      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i.test(taskId);
+
+      if (supabase && userId && isUuid) {
         const { error } = await supabase
           .from('tasks')
           .delete()
@@ -621,6 +667,14 @@ export const useAppData = create<AppDataState>((set, get) => ({
           }
           throw error;
         }
+      } else if (!isUuid) {
+        // Guest mode task - save to AsyncStorage
+        try {
+          const allTasks = get().tasks;
+          await AsyncStorage.setItem(`tasks-${userId}`, JSON.stringify(allTasks));
+        } catch (storageError) {
+          console.warn('Failed to save tasks to AsyncStorage:', storageError);
+        }
       }
     } catch (error: any) {
       console.error('Error deleting task:', error);
@@ -633,7 +687,7 @@ export const useAppData = create<AppDataState>((set, get) => ({
     try {
       // Check if userId is a valid UUID (authenticated user) or guest
       const isUuid = /^[0-9a-fA-F-]{36}$/.test(userId);
-      
+
       if (!supabase || !isUuid) {
         // Fallback to local
         const newHabit: Habit = {
@@ -675,6 +729,51 @@ export const useAppData = create<AppDataState>((set, get) => ({
     } catch (error: any) {
       console.error('Error creating habit:', error);
       set({ error: error.message || 'Failed to create habit' });
+      throw error;
+    }
+  },
+
+  updateHabit: async (habitId: string, updates: Partial<Habit>, userId: string) => {
+    try {
+      const optimisticHabit = get().habits.find(h => h.id === habitId);
+      if (!optimisticHabit) throw new Error('Habit not found');
+
+      // Optimistic update
+      set(state => ({
+        habits: state.habits.map(h =>
+          h.id === habitId ? { ...h, ...updates } : h
+        ),
+      }));
+
+      // Check if habitId is a UUID (authenticated habit) or local ID (guest habit)
+      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i.test(habitId);
+
+      if (supabase && userId && isUuid) {
+        const { error } = await supabase
+          .from('habits')
+          .update(updates)
+          .eq('id', habitId)
+          .eq('user_id', userId);
+
+        if (error) {
+          // Rollback
+          set(state => ({
+            habits: state.habits.map(h => (h.id === habitId ? optimisticHabit : h)),
+          }));
+          throw error;
+        }
+      } else if (!isUuid) {
+        // Guest mode habit - save to AsyncStorage
+        try {
+          const allHabits = get().habits;
+          await AsyncStorage.setItem(`habits-${userId}`, JSON.stringify(allHabits));
+        } catch (storageError) {
+          console.warn('Failed to save habit to AsyncStorage:', storageError);
+        }
+      }
+    } catch (error: any) {
+      console.error('Error updating habit:', error);
+      set({ error: error.message || 'Failed to update habit' });
       throw error;
     }
   },

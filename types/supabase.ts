@@ -23,7 +23,8 @@ export interface Task {
   completed_at: string | null;
   created_at: string;
   user_id: string;
-  notes?: string | null;
+  description?: string | null;
+  deadline_at?: string | null;
 }
 
 export interface FocusSession {
@@ -137,4 +138,3 @@ CREATE INDEX IF NOT EXISTS idx_habit_completions_user_id ON habit_completions(us
 CREATE INDEX IF NOT EXISTS idx_focus_sessions_user_id ON focus_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
 */
-

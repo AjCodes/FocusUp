@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Pressable, FlatList, Alert, Modal } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, Alert, Modal, StyleSheet } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../src/features/auth/useAuth';
 import { useTheme } from '../../components/ThemeProvider';
@@ -43,6 +43,7 @@ export default function Habits() {
   const [completions, setCompletions] = useState<HabitCompletion[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [newHabit, setNewHabit] = useState({
     title: '',
     cue: '',
@@ -53,6 +54,7 @@ export default function Habits() {
   const habits = useAppData(state => state.habits);
   const refreshAll = useAppData(state => state.refreshAll);
   const createHabit = useAppData(state => state.createHabit);
+  const updateHabit = useAppData(state => state.updateHabit);
   const deleteHabit = useAppData(state => state.deleteHabit);
 
   const getUserId = async (): Promise<string> => {
@@ -97,14 +99,14 @@ export default function Habits() {
       const userId = session?.user?.id ?? await getUserId();
       const trimmedTitle = newHabit.title.trim();
       const trimmedCue = newHabit.cue.trim();
-      
+
       // Create habit - this already does optimistic update
       await createHabit(userId, trimmedTitle, trimmedCue || null, newHabit.focus_attribute);
-      
+
       // Clear form immediately
       setNewHabit({ title: '', cue: '', focus_attribute: 'CO' as FocusAttributeKey });
       setShowAddModal(false);
-      
+
       // Refresh after a short delay to ensure database sync (for authenticated users)
       // This won't overwrite the optimistic update due to duplicate checking
       setTimeout(async () => {
@@ -118,6 +120,41 @@ export default function Habits() {
     } catch (error) {
       console.error('Error adding habit:', error);
       Alert.alert('Error', 'Failed to add habit');
+    }
+  };
+
+  const editHabit = async () => {
+    if (!editingHabit || !newHabit.title.trim()) {
+      Alert.alert('Error', 'Please enter a habit name');
+      return;
+    }
+    try {
+      const userId = session?.user?.id ?? await getUserId();
+      const trimmedTitle = newHabit.title.trim();
+      const trimmedCue = newHabit.cue.trim();
+
+      // Update habit
+      await updateHabit(editingHabit.id, {
+        title: trimmedTitle,
+        cue: trimmedCue || null,
+        focus_attribute: newHabit.focus_attribute,
+      }, userId);
+
+      // Clear form immediately
+      setNewHabit({ title: '', cue: '', focus_attribute: 'CO' as FocusAttributeKey });
+      setEditingHabit(null);
+
+      // Refresh after a short delay
+      setTimeout(async () => {
+        try {
+          await refreshAll(userId);
+        } catch (err) {
+          console.warn('Background refresh failed:', err);
+        }
+      }, 300);
+    } catch (error) {
+      console.error('Error updating habit:', error);
+      Alert.alert('Error', 'Failed to update habit');
     }
   };
 
@@ -254,80 +291,76 @@ export default function Habits() {
     return (
       <SwipeableRow
         key={habit.id}
-        onSwipeRight={!completedToday ? () => toggleHabitCompletion(habit) : undefined}
+        onSwipeRight={() => toggleHabitCompletion(habit)}
         onSwipeLeft={() => deleteHabitHandler(habit)}
         rightActionColor={colors.success}
         leftActionColor="#EF4444"
         rightIcon="checkmark-circle"
         leftIcon="trash"
       >
-        <GlassCard style={{ marginVertical: 6 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+        <GlassCard style={{ marginVertical: 6 }} padding={20}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 14 }}>
             <Pressable
               onPress={() => toggleHabitCompletion(habit)}
               style={{
-                width: 28,
-                height: 28,
-                borderRadius: 14,
-                backgroundColor: completedToday ? colors.success : 'transparent',
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: completedToday ? colors.success : `${colors.background}35`,
                 borderWidth: 2,
-                borderColor: completedToday ? colors.success : colors.primary + '60',
+                borderColor: completedToday ? colors.success : `${colors.primary}55`,
                 justifyContent: 'center',
                 alignItems: 'center',
-                marginTop: 2,
+                shadowColor: colors.primary,
+                shadowOpacity: completedToday ? 0.3 : 0.12,
+                shadowRadius: 6,
+                elevation: completedToday ? 5 : 0,
               }}
             >
-              {completedToday && <Text style={{ color: colors.background, fontSize: 14, fontWeight: 'bold' }}>✓</Text>}
+              <Ionicons
+                name={completedToday ? 'checkmark' : 'ellipse-outline'}
+                size={18}
+                color={completedToday ? colors.background : `${colors.primary}AA`}
+              />
             </Pressable>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <Text style={{ fontSize: 17, color: colors.text, fontWeight: '600' }}>
+            <Pressable style={{ flex: 1, gap: 6 }} onPress={() => {
+              setEditingHabit(habit);
+              setNewHabit({
+                title: habit.title,
+                cue: habit.cue || '',
+                focus_attribute: habit.focus_attribute as FocusAttributeKey,
+              });
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <Text style={{ fontSize: 17, color: colors.text, fontWeight: '600', flexShrink: 1 }}>
                   {habit.title}
                 </Text>
-                <View style={{
-                  backgroundColor: (attr?.color || colors.primary) + '20',
-                  paddingHorizontal: 8,
-                  paddingVertical: 2,
-                  borderRadius: 8,
-                }}>
-                  <Text style={{ fontSize: 12 }}>{attr?.emoji}</Text>
-                </View>
-              </View>
-              {habit.cue && (
-                <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 6, fontStyle: 'italic' }}>
-                  {habit.cue}
-                </Text>
-              )}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <View style={{ 
-                  backgroundColor: colors.cardBackground,
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                  borderRadius: 12,
-                }}>
-                  <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '600' }}>
-                    {streak} day streak
-                  </Text>
-                </View>
-                {completedToday && (
-                  <View style={{ 
-                    backgroundColor: colors.success + '20',
-                    paddingHorizontal: 8,
+                {attr && (
+                  <View style={{
+                    backgroundColor: `${colors.primary}22`,
+                    paddingHorizontal: 10,
                     paddingVertical: 4,
-                    borderRadius: 12,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: `${colors.primary}44`,
                   }}>
-                    <Text style={{ fontSize: 11, color: colors.success, fontWeight: '600' }}>
-                      Completed today
+                    <Text style={{ fontSize: 12, color: colors.text }}>
+                      {attr.emoji} {attr.label}
                     </Text>
                   </View>
                 )}
               </View>
-            </View>
+              {habit.cue && (
+                <Text style={{ fontSize: 13, color: colors.textSecondary, fontStyle: 'italic' }}>
+                  {habit.cue}
+                </Text>
+              )}
+            </Pressable>
             <Pressable
               onPress={() => deleteHabitHandler(habit)}
               style={{
                 padding: 8,
-                borderRadius: 8,
+                borderRadius: 10,
                 backgroundColor: colors.cardBackground,
                 justifyContent: 'center',
                 alignItems: 'center',
@@ -337,29 +370,54 @@ export default function Habits() {
               <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
             </Pressable>
           </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 }}>
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <View style={{
+                alignSelf: 'flex-start',
+                backgroundColor: completedToday ? `${colors.success}26` : colors.cardBackground,
+                borderRadius: 16,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderWidth: 1,
+                borderColor: completedToday ? `${colors.success}70` : `${colors.primary}22`,
+              }}>
+                <Text style={{
+                  fontSize: 12,
+                  fontWeight: '600',
+                  color: completedToday ? colors.success : colors.textSecondary,
+                }}>
+                  {completedToday ? 'Completed - swipe to undo' : 'Tap card to edit'}
+                </Text>
+              </View>
+            </View>
+            <View style={{
+              backgroundColor: `${colors.primary}28`,
+              borderRadius: 18,
+              paddingHorizontal: 14,
+              paddingVertical: 6,
+              borderWidth: 1,
+              borderColor: `${colors.primary}55`,
+            }}>
+              <Text style={{ fontSize: 12, color: colors.text, fontWeight: '700', letterSpacing: 0.3 }}>
+                {streak} day streak!!
+              </Text>
+            </View>
+          </View>
         </GlassCard>
       </SwipeableRow>
     );
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#1E293B' }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <View style={{ flex: 1, padding: 16, paddingTop: 60 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>
             Daily Rituals
           </Text>
-          <Pressable
-            onPress={() => setShowAddModal(true)}
-            style={{
-              backgroundColor: colors.primary,
-              paddingHorizontal: 16,
-              paddingVertical: 8,
-              borderRadius: 20,
-            }}
-          >
-            <Text style={{ color: colors.background, fontWeight: '600' }}>+ Add</Text>
-          </Pressable>
+          <Text style={{ color: colors.textSecondary, fontSize: 14 }}>
+            {habits.length} rituals
+          </Text>
         </View>
         <Text style={{ color: colors.textSecondary, marginBottom: 20, fontSize: 16 }}>
           Level up your consistency streaks and earn coins with every check-in.
@@ -383,14 +441,31 @@ export default function Habits() {
             renderItem={renderHabit}
             keyExtractor={(item) => item.id}
             showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 140, paddingTop: 4 }}
           />
         )}
       </View>
+      <Pressable
+        onPress={() => setShowAddModal(true)}
+        style={[
+          styles.fab,
+          {
+            backgroundColor: colors.primary,
+            shadowColor: colors.primary,
+          },
+        ]}
+      >
+        <Ionicons name="add" size={26} color={colors.background} />
+      </Pressable>
       <Modal
-        visible={showAddModal}
+        visible={showAddModal || !!editingHabit}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setShowAddModal(false)}
+        onRequestClose={() => {
+          setShowAddModal(false);
+          setEditingHabit(null);
+          setNewHabit({ title: '', cue: '', focus_attribute: 'CO' as FocusAttributeKey });
+        }}
       >
         <View style={{
           flex: 1,
@@ -407,7 +482,7 @@ export default function Habits() {
               marginBottom: 20,
               textAlign: 'center',
             }}>
-              Track a new ritual
+              {editingHabit ? 'Edit Ritual' : 'Track a new ritual'}
             </Text>
             <Text style={{ color: colors.textSecondary, marginBottom: 8 }}>
               Habit name
@@ -474,7 +549,11 @@ export default function Habits() {
             </View>
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <Pressable
-                onPress={() => setShowAddModal(false)}
+                onPress={() => {
+                  setShowAddModal(false);
+                  setEditingHabit(null);
+                  setNewHabit({ title: '', cue: '', focus_attribute: 'CO' as FocusAttributeKey });
+                }}
                 style={{
                   flex: 1,
                   backgroundColor: colors.cardBackground,
@@ -486,7 +565,7 @@ export default function Habits() {
                 <Text style={{ color: colors.text, fontWeight: '600' }}>Cancel</Text>
               </Pressable>
               <Pressable
-                onPress={addHabit}
+                onPress={editingHabit ? editHabit : addHabit}
                 style={{
                   flex: 1,
                   backgroundColor: colors.primary,
@@ -495,7 +574,9 @@ export default function Habits() {
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ color: colors.background, fontWeight: '600' }}>Add habit</Text>
+                <Text style={{ color: colors.background, fontWeight: '600' }}>
+                  {editingHabit ? 'Update habit' : 'Add habit'}
+                </Text>
               </Pressable>
             </View>
             <Text style={{
@@ -513,4 +594,19 @@ export default function Habits() {
   );
 }
 
+const styles = StyleSheet.create({
+  fab: {
+    position: 'absolute',
+    bottom: 80,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+});
 

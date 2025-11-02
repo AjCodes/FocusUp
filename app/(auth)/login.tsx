@@ -12,6 +12,7 @@ import {
   StyleSheet,
   Image,
   Alert,
+  Easing,
 } from 'react-native';
 import { useAuth } from '../../src/features/auth/useAuth';
 import { useRouter } from 'expo-router';
@@ -32,29 +33,76 @@ export default function Login() {
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const logoScale = useRef(new Animated.Value(0.3)).current;
+  const logoOpacity = useRef(new Animated.Value(0)).current;
+  const formSlide = useRef(new Animated.Value(30)).current;
+
+  // Track OAuth flow state
+  const oauthFlowActive = useRef(false);
+  const initialAuthCheck = useRef(true);
 
   useEffect(() => {
     // Check if user is already authenticated
     if (isAuthenticated) {
-      // Show a prompt to sign out or continue
-      setShowSignOutPrompt(true);
+      // If this is initial check and user is already logged in, show sign out prompt
+      if (initialAuthCheck.current) {
+        setShowSignOutPrompt(true);
+      }
+      // If OAuth flow was active and now authenticated, navigate to focus
+      else if (oauthFlowActive.current) {
+        console.log('✅ OAuth authentication successful, navigating to focus screen');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setLoading(false);
+        oauthFlowActive.current = false;
+        router.replace('/(tabs)/focus');
+      }
     }
+
+    // Mark that initial check is complete
+    initialAuthCheck.current = false;
   }, [isAuthenticated]);
 
   useEffect(() => {
-    // Fade-in animation
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 800,
-        useNativeDriver: true,
-      }),
+    // Sophisticated staggered entrance animations
+    Animated.sequence([
+      // Logo animation first
+      Animated.parallel([
+        Animated.spring(logoScale, {
+          toValue: 1,
+          friction: 8,
+          tension: 40,
+          useNativeDriver: true,
+        }),
+        Animated.timing(logoOpacity, {
+          toValue: 1,
+          duration: 600,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+      // Then background and form
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 800,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          friction: 9,
+          tension: 50,
+          useNativeDriver: true,
+        }),
+        Animated.spring(formSlide, {
+          toValue: 0,
+          friction: 9,
+          tension: 50,
+          delay: 100,
+          useNativeDriver: true,
+        }),
+      ]),
     ]).start();
   }, []);
 
@@ -108,9 +156,11 @@ export default function Login() {
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError('');
+    oauthFlowActive.current = true; // Mark that OAuth flow has started
+
     try {
       console.log('🔐 Attempting Google OAuth sign in...');
-      const { error: googleError, data } = await signInWithGoogle();
+      const { error: googleError } = await signInWithGoogle();
 
       if (googleError) {
         console.error('❌ Google OAuth error:', googleError);
@@ -130,21 +180,20 @@ export default function Login() {
 
         setError(userMessage);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      } else if (data?.user) {
-        // Session was successfully established
-        console.log('✅ Google sign in successful:', data.user.email);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        router.replace('/(tabs)/focus');
+        setLoading(false);
+        oauthFlowActive.current = false; // Reset on error
       } else {
-        console.log('✅ Google OAuth completed');
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        // OAuth browser flow completed successfully
+        // The deep link handler will process the callback and establish the session
+        // The auth state change listener will then trigger navigation
+        console.log('✅ OAuth browser flow initiated, waiting for authentication...');
       }
     } catch (err: any) {
       console.error('❌ Google sign in exception:', err);
       setError(err.message || 'Google sign in failed. Please try again.');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    } finally {
       setLoading(false);
+      oauthFlowActive.current = false; // Reset on error
     }
   };
 
@@ -226,27 +275,45 @@ export default function Login() {
             ]}
           >
             {/* Header with Gradient Background */}
-            <LinearGradient
-              colors={['#6366F1', '#8B5CF6', '#A855F7']}
-              style={styles.headerGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <View style={styles.logoContainer}>
-                <Image
-                  source={require('../../assets/logo.png')}
-                  style={styles.logo}
-                  resizeMode="contain"
-                />
-                <Text style={styles.logoText}>FocusUp</Text>
-                <Text style={styles.tagline}>Craft your day, shape your life</Text>
-              </View>
-            </LinearGradient>
+            <Animated.View style={{ opacity: fadeAnim }}>
+              <LinearGradient
+                colors={['#14B8A6', '#06B6D4', '#0EA5E9']}
+                style={styles.headerGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Animated.View
+                  style={[
+                    styles.logoContainer,
+                    {
+                      opacity: logoOpacity,
+                      transform: [{ scale: logoScale }],
+                    }
+                  ]}
+                >
+                  <Image
+                    source={require('../../assets/logo.png')}
+                    style={styles.logo}
+                    resizeMode="contain"
+                  />
+                  <Text style={styles.logoText}>FocusUp</Text>
+                  <Text style={styles.tagline}>Craft your day, shape your life</Text>
+                </Animated.View>
+              </LinearGradient>
+            </Animated.View>
 
             {/* White Card with Form */}
-            <View style={styles.formCard}>
-              <Text style={styles.welcomeTitle}>Welcome Back</Text>
-              <Text style={styles.welcomeSubtitle}>Enter your details below</Text>
+            <Animated.View
+              style={[
+                styles.formCard,
+                {
+                  opacity: fadeAnim,
+                  transform: [{ translateY: formSlide }],
+                }
+              ]}
+            >
+              <Text style={styles.welcomeTitle}>Welcome</Text>
+              <Text style={styles.welcomeSubtitle}>Sign in to continue your focus journey</Text>
 
               {/* Email/Password Form */}
               <View style={styles.formContainer}>
@@ -307,7 +374,7 @@ export default function Login() {
 
               {/* Sign In Button */}
               <LinearGradient
-                colors={['#6366F1', '#8B5CF6', '#A855F7']}
+                colors={['#14B8A6', '#06B6D4', '#0EA5E9']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.primaryButton}
@@ -317,7 +384,7 @@ export default function Login() {
                   disabled={loading}
                   style={({ pressed }) => [
                     styles.primaryButtonInner,
-                    pressed && styles.buttonPressed,
+                    pressed && styles.primaryButtonPressed,
                   ]}
                 >
                   {loading ? (
@@ -332,35 +399,22 @@ export default function Login() {
               {/* Divider */}
               <View style={styles.divider}>
                 <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>Or sign in with</Text>
+                <Text style={styles.dividerText}>Or continue with</Text>
                 <View style={styles.dividerLine} />
               </View>
 
-              {/* Social Login Buttons */}
-              <View style={styles.socialButtonsContainer}>
-                <Pressable
-                  onPress={handleGoogleSignIn}
-                  disabled={loading}
-                  style={({ pressed }) => [
-                    styles.socialButton,
-                    pressed && styles.buttonPressed,
-                  ]}
-                >
-                  <Ionicons name="logo-google" size={20} color="#DB4437" />
-                  <Text style={styles.socialButtonText}>Google</Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={() => Alert.alert('Coming Soon', 'Facebook login will be available soon.')}
-                  style={({ pressed }) => [
-                    styles.socialButton,
-                    pressed && styles.buttonPressed,
-                  ]}
-                >
-                  <Ionicons name="logo-facebook" size={20} color="#1877F2" />
-                  <Text style={styles.socialButtonText}>Facebook</Text>
-                </Pressable>
-              </View>
+              {/* Google Login Button */}
+              <Pressable
+                onPress={handleGoogleSignIn}
+                disabled={loading}
+                style={({ pressed }) => [
+                  styles.googleButton,
+                  pressed && styles.googleButtonPressed,
+                ]}
+              >
+                <Ionicons name="logo-google" size={22} color="#DB4437" />
+                <Text style={styles.googleButtonText}>Continue with Google</Text>
+              </Pressable>
 
               {/* Create Account Link */}
               <View style={styles.signupPrompt}>
@@ -378,7 +432,7 @@ export default function Login() {
               >
                 <Text style={styles.guestButtonText}>Continue as Guest</Text>
               </Pressable>
-            </View>
+            </Animated.View>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -398,55 +452,59 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerGradient: {
-    paddingTop: 60,
-    paddingBottom: 40,
+    paddingTop: 50,
+    paddingBottom: 30,
     paddingHorizontal: 24,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
   },
   logoContainer: {
     alignItems: 'center',
   },
   logo: {
-    width: 100,
-    height: 100,
-    marginBottom: 16,
+    width: 200,
+    height: 200,
+    marginBottom: 12,
   },
   logoText: {
     fontSize: 32,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#FFFFFF',
-    marginBottom: 8,
+    marginBottom: 4,
+    letterSpacing: 0.5,
   },
   tagline: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.95)',
     textAlign: 'center',
+    fontWeight: '400',
   },
   formCard: {
     backgroundColor: '#FFFFFF',
-    margin: 24,
+    margin: 20,
     marginTop: -20,
     borderRadius: 24,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 5,
+    padding: 20,
+    shadowColor: '#14B8A6',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
   },
   welcomeTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: '#1F2937',
-    marginBottom: 8,
+    marginBottom: 4,
     textAlign: 'center',
+    letterSpacing: 0.3,
   },
   welcomeSubtitle: {
     fontSize: 14,
     color: '#6B7280',
-    marginBottom: 24,
+    marginBottom: 20,
     textAlign: 'center',
+    fontWeight: '400',
   },
   formContainer: {
     width: '100%',
@@ -456,32 +514,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#F9FAFB',
     borderRadius: 12,
-    marginBottom: 16,
-    paddingHorizontal: 16,
+    marginBottom: 12,
+    paddingHorizontal: 14,
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
   inputIcon: {
-    marginRight: 12,
+    marginRight: 10,
     color: '#9CA3AF',
   },
   input: {
     flex: 1,
     color: '#1F2937',
-    fontSize: 16,
-    paddingVertical: 14,
+    fontSize: 15,
+    paddingVertical: 12,
   },
   eyeIcon: {
-    padding: 8,
+    padding: 6,
   },
   forgotPassword: {
     alignSelf: 'flex-end',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   forgotPasswordText: {
-    color: '#6366F1',
+    color: '#14B8A6',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '700',
   },
   errorContainer: {
     flexDirection: 'row',
@@ -498,27 +556,34 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   primaryButton: {
-    borderRadius: 12,
-    marginBottom: 20,
+    borderRadius: 14,
+    marginBottom: 14,
     overflow: 'hidden',
+    shadowColor: '#14B8A6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   primaryButtonInner: {
-    paddingVertical: 16,
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  primaryButtonPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.98 }],
   },
   primaryButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
-  },
-  buttonPressed: {
-    opacity: 0.8,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 20,
+    marginVertical: 14,
   },
   dividerLine: {
     flex: 1,
@@ -528,53 +593,59 @@ const styles = StyleSheet.create({
   dividerText: {
     color: '#9CA3AF',
     fontSize: 13,
-    marginHorizontal: 12,
+    marginHorizontal: 16,
+    fontWeight: '500',
   },
-  socialButtonsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
-  },
-  socialButton: {
-    flex: 1,
+  googleButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#FFFFFF',
     paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 14,
+    borderWidth: 1.5,
     borderColor: '#E5E7EB',
-    gap: 8,
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  socialButtonText: {
+  googleButtonPressed: {
+    backgroundColor: '#F9FAFB',
+    transform: [{ scale: 0.98 }],
+    borderColor: '#14B8A6',
+  },
+  googleButtonText: {
     color: '#1F2937',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
+    marginLeft: 12,
   },
   signupPrompt: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   signupText: {
     color: '#6B7280',
     fontSize: 14,
   },
   signupLink: {
-    color: '#6366F1',
+    color: '#14B8A6',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   guestButton: {
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
   },
   guestButtonText: {
     color: '#9CA3AF',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   alreadyAuthContainer: {
     flex: 1,
