@@ -11,6 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppData } from '../../store/appData';
 import { Ionicons } from '@expo/vector-icons';
 import { SwipeableRow } from '../../components/SwipeableRow';
+import { Toast } from '../../components/Toast';
 
 const USER_ID_KEY = 'focusup-user-id';
 type FocusAttributeKey = 'PH' | 'CO' | 'EM' | 'SO';
@@ -49,6 +50,25 @@ export default function Habits() {
     cue: '',
     focus_attribute: 'CO' as FocusAttributeKey,
   });
+
+  // Toast state
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: 'success' | 'error' | 'info';
+  }>({
+    visible: false,
+    message: '',
+    type: 'success',
+  });
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => {
+    setToast({ ...toast, visible: false });
+  };
 
   // Use appData store
   const habits = useAppData(state => state.habits);
@@ -92,7 +112,7 @@ export default function Habits() {
 
   const addHabit = async () => {
     if (!newHabit.title.trim()) {
-      Alert.alert('Error', 'Please enter a habit name');
+      showToast('Please enter a habit name', 'error');
       return;
     }
     try {
@@ -107,6 +127,8 @@ export default function Habits() {
       setNewHabit({ title: '', cue: '', focus_attribute: 'CO' as FocusAttributeKey });
       setShowAddModal(false);
 
+      showToast('✨ Ritual added to your daily habits!', 'success');
+
       // Refresh after a short delay to ensure database sync (for authenticated users)
       // This won't overwrite the optimistic update due to duplicate checking
       setTimeout(async () => {
@@ -119,13 +141,14 @@ export default function Habits() {
       }, 500);
     } catch (error) {
       console.error('Error adding habit:', error);
+      showToast('Failed to add habit', 'error');
       Alert.alert('Error', 'Failed to add habit');
     }
   };
 
   const editHabit = async () => {
     if (!editingHabit || !newHabit.title.trim()) {
-      Alert.alert('Error', 'Please enter a habit name');
+      showToast('Please enter a habit name', 'error');
       return;
     }
     try {
@@ -144,6 +167,8 @@ export default function Habits() {
       setNewHabit({ title: '', cue: '', focus_attribute: 'CO' as FocusAttributeKey });
       setEditingHabit(null);
 
+      showToast('📝 Ritual updated successfully!', 'success');
+
       // Refresh after a short delay
       setTimeout(async () => {
         try {
@@ -154,7 +179,7 @@ export default function Habits() {
       }, 300);
     } catch (error) {
       console.error('Error updating habit:', error);
-      Alert.alert('Error', 'Failed to update habit');
+      showToast('Failed to update ritual', 'error');
     }
   };
 
@@ -166,10 +191,12 @@ export default function Habits() {
         c => c.habit_id === habit.id && new Date(c.completed_at).toDateString() === today
       );
       if (existingCompletion) {
+        // Uncompleting habit
         if (!supabase || !session?.user?.id) {
           const updatedCompletions = completions.filter(c => c.id !== existingCompletion.id);
           setCompletions(updatedCompletions);
           await AsyncStorage.setItem(`habit-completions-${userId}`, JSON.stringify(updatedCompletions));
+          showToast('Ritual unmarked for today', 'info');
           return;
         }
         const { error } = await supabase
@@ -178,10 +205,12 @@ export default function Habits() {
           .eq('id', existingCompletion.id);
         if (!error) {
           setCompletions(prev => prev.filter(c => c.id !== existingCompletion.id));
-          await AsyncStorage.setItem(`habit-completions-${userId}`, 
+          await AsyncStorage.setItem(`habit-completions-${userId}`,
             JSON.stringify(completions.filter(c => c.id !== existingCompletion.id)));
+          showToast('Ritual unmarked for today', 'info');
         }
       } else {
+        // Completing habit
         if (!supabase || !session?.user?.id) {
           const completion: HabitCompletion = {
             id: `completion_${Date.now()}`,
@@ -192,6 +221,7 @@ export default function Habits() {
           const updatedCompletions = [completion, ...completions];
           setCompletions(updatedCompletions);
           await AsyncStorage.setItem(`habit-completions-${userId}`, JSON.stringify(updatedCompletions));
+          showToast('🎉 Ritual completed!', 'success');
           return;
         }
         const { data, error } = await supabase
@@ -211,10 +241,12 @@ export default function Habits() {
             );
             return updated;
           });
+          showToast('🎉 Ritual completed!', 'success');
         }
       }
     } catch (error) {
       console.error('Error toggling habit completion:', error);
+      showToast('Failed to update ritual', 'error');
     }
   };
 
@@ -231,15 +263,18 @@ export default function Habits() {
             try {
               const userId = session?.user?.id ?? await getUserId();
               await deleteHabit(habit.id, userId);
-              
+
               // Remove related completions
               const updatedCompletions = completions.filter(c => c.habit_id !== habit.id);
               setCompletions(updatedCompletions);
-              
+
               // Refresh to sync
               await refreshAll(userId);
+
+              showToast('🗑️ Ritual deleted from habits', 'success');
             } catch (error) {
               console.error('Error deleting habit:', error);
+              showToast('Failed to delete ritual', 'error');
             }
           },
         },
@@ -410,6 +445,12 @@ export default function Habits() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={hideToast}
+      />
       <View style={{ flex: 1, padding: 16, paddingTop: 60 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>
@@ -420,7 +461,7 @@ export default function Habits() {
           </Text>
         </View>
         <Text style={{ color: colors.textSecondary, marginBottom: 20, fontSize: 16 }}>
-          Level up your consistency streaks and earn coins with every check-in.
+          Level up your consistency streaks and earn XP.
         </Text>
         {loading ? (
           <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 40 }}>

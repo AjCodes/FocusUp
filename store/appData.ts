@@ -156,33 +156,70 @@ export const useAppData = create<AppDataState>((set, get) => ({
 
   startSession: async ({ mode, duration, userId }) => {
     try {
-      // Check if userId is a valid UUID (authenticated user) or guest
-      const isUuid = /^[0-9a-fA-F-]{36}$/.test(userId);
-      
-      if (!supabase || !userId || !isUuid) {
-        // Guest mode or invalid userId - return null, don't create session
+      console.log('🎬 startSession called:', { mode, duration, userId });
+
+      if (!userId) {
+        console.log('❌ No userId');
         return null;
       }
 
-      const { data, error } = await supabase
-        .from('focus_sessions')
-        .insert({
-          user_id: userId, // This should match auth.uid()::text per RLS
+      // Check if userId is a valid UUID (authenticated user) or guest
+      const isUuid = /^[0-9a-fA-F-]{36}$/.test(userId);
+
+      if (supabase && isUuid) {
+        // Authenticated user - use Supabase
+        console.log('✅ Authenticated user, using Supabase...');
+
+        const { data, error } = await supabase
+          .from('focus_sessions')
+          .insert({
+            user_id: userId,
+            mode,
+            duration,
+            started_at: new Date().toISOString(),
+            coins_earned: 0,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error('❌ Supabase insert error:', JSON.stringify(error, null, 2));
+          throw error;
+        }
+
+        const session = data as FocusSession;
+        console.log('✅ Session created in Supabase:', session.id);
+        set({ activeSession: session });
+        return session.id;
+      } else {
+        // Guest user - use local storage
+        console.log('✅ Guest user, using local storage...');
+
+        const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const session: FocusSession = {
+          id: sessionId,
+          user_id: userId,
           mode,
           duration,
           started_at: new Date().toISOString(),
+          completed_at: null,
           coins_earned: 0,
-        })
-        .select()
-        .single();
+        };
 
-      if (error) throw error;
+        // Save to AsyncStorage
+        const storageKey = `session-${userId}-${sessionId}`;
+        await AsyncStorage.setItem(storageKey, JSON.stringify(session));
 
-      const session = data as FocusSession;
-      set({ activeSession: session });
-      return session.id;
+        // Also save to active session list
+        const activeSessionKey = `active-session-${userId}`;
+        await AsyncStorage.setItem(activeSessionKey, sessionId);
+
+        console.log('✅ Session created in local storage:', sessionId);
+        set({ activeSession: session });
+        return sessionId;
+      }
     } catch (error: any) {
-      console.error('Error starting session:', error);
+      console.error('❌ Error starting session:', error);
       set({ error: error.message || 'Failed to start session' });
       return null;
     }
@@ -190,45 +227,115 @@ export const useAppData = create<AppDataState>((set, get) => ({
 
   attachToSession: async ({ sessionId, taskIds, habitIds, userId }) => {
     try {
-      if (!supabase || !userId) return;
+      if (!userId) return;
 
-      // Upsert tasks
-      if (taskIds.length > 0) {
-        const taskInserts = taskIds.map(taskId => ({
-          session_id: sessionId,
-          task_id: taskId,
-          user_id: userId,
-          completed: false,
-        }));
+      console.log('📌 attachToSession called:', { sessionId, taskIds, habitIds, userId });
 
-        const { error: tasksError } = await supabase
-          .from('focus_session_tasks')
-          .upsert(taskInserts, { onConflict: 'session_id,task_id' });
+      const isUuid = /^[0-9a-fA-F-]{36}$/.test(userId);
 
-        if (tasksError) throw tasksError;
-      }
+      if (supabase && isUuid) {
+        // Authenticated user - use Supabase
+        console.log('✅ Using Supabase...');
 
-      // Upsert habits
-      if (habitIds.length > 0) {
-        const habitInserts = habitIds.map(habitId => ({
-          session_id: sessionId,
-          habit_id: habitId,
-          user_id: userId,
-          performed: false,
-        }));
+        // Upsert tasks
+        if (taskIds.length > 0) {
+          const taskInserts = taskIds.map(taskId => ({
+            session_id: sessionId,
+            task_id: taskId,
+            user_id: userId,
+            completed: false,
+          }));
 
-        const { error: habitsError } = await supabase
-          .from('focus_session_habits')
-          .upsert(habitInserts, { onConflict: 'session_id,habit_id' });
+          console.log('📝 Upserting tasks:', taskInserts);
 
-        if (habitsError) throw habitsError;
+          const { data: upsertedTasks, error: tasksError } = await supabase
+            .from('focus_session_tasks')
+            .upsert(taskInserts, { onConflict: 'session_id,task_id' })
+            .select();
+
+          if (tasksError) throw tasksError;
+          console.log('✅ Tasks upserted:', upsertedTasks);
+        }
+
+        // Upsert habits
+        if (habitIds.length > 0) {
+          const habitInserts = habitIds.map(habitId => ({
+            session_id: sessionId,
+            habit_id: habitId,
+            user_id: userId,
+            performed: false,
+          }));
+
+          console.log('📝 Upserting habits:', habitInserts);
+
+          const { data: upsertedHabits, error: habitsError } = await supabase
+            .from('focus_session_habits')
+            .upsert(habitInserts, { onConflict: 'session_id,habit_id' })
+            .select();
+
+          if (habitsError) throw habitsError;
+          console.log('✅ Habits upserted:', upsertedHabits);
+        }
+      } else {
+        // Guest user - use local storage
+        console.log('✅ Using local storage...');
+
+        // Load existing session items
+        const sessionTasksKey = `session-tasks-${userId}-${sessionId}`;
+        const sessionHabitsKey = `session-habits-${userId}-${sessionId}`;
+
+        const existingTasksJson = await AsyncStorage.getItem(sessionTasksKey);
+        const existingHabitsJson = await AsyncStorage.getItem(sessionHabitsKey);
+
+        const existingTasks: FocusSessionTask[] = existingTasksJson ? JSON.parse(existingTasksJson) : [];
+        const existingHabits: FocusSessionHabit[] = existingHabitsJson ? JSON.parse(existingHabitsJson) : [];
+
+        // Add new tasks (avoiding duplicates)
+        if (taskIds.length > 0) {
+          const newTasks: FocusSessionTask[] = taskIds
+            .filter(taskId => !existingTasks.some(t => t.task_id === taskId))
+            .map(taskId => ({
+              id: `session_task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              session_id: sessionId,
+              task_id: taskId,
+              user_id: userId,
+              completed: false,
+              completed_at: null,
+              created_at: new Date().toISOString(),
+            }));
+
+          const allTasks = [...existingTasks, ...newTasks];
+          await AsyncStorage.setItem(sessionTasksKey, JSON.stringify(allTasks));
+          console.log('✅ Tasks saved to local storage:', allTasks.length);
+        }
+
+        // Add new habits (avoiding duplicates)
+        if (habitIds.length > 0) {
+          const newHabits: FocusSessionHabit[] = habitIds
+            .filter(habitId => !existingHabits.some(h => h.habit_id === habitId))
+            .map(habitId => ({
+              id: `session_habit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              session_id: sessionId,
+              habit_id: habitId,
+              user_id: userId,
+              performed: false,
+              performed_at: null,
+              created_at: new Date().toISOString(),
+            }));
+
+          const allHabits = [...existingHabits, ...newHabits];
+          await AsyncStorage.setItem(sessionHabitsKey, JSON.stringify(allHabits));
+          console.log('✅ Habits saved to local storage:', allHabits.length);
+        }
       }
 
       // Refresh session tasks/habits
-      await Promise.all([
+      console.log('🔄 Refreshing session items...');
+      const [tasks, habits] = await Promise.all([
         get().getSessionTasks(sessionId, userId),
         get().getSessionHabits(sessionId, userId),
       ]);
+      console.log('✅ Session items refreshed:', { tasks: tasks.length, habits: habits.length });
     } catch (error: any) {
       console.error('Error attaching to session:', error);
       set({ error: error.message || 'Failed to attach items to session' });
@@ -238,22 +345,39 @@ export const useAppData = create<AppDataState>((set, get) => ({
 
   getSessionTasks: async (sessionId: string, userId: string) => {
     try {
-      if (!supabase || !userId) {
+      if (!userId) {
         set({ sessionTasks: [] });
         return [];
       }
 
-      const { data, error } = await supabase
-        .from('focus_session_tasks')
-        .select('*')
-        .eq('session_id', sessionId)
-        .eq('user_id', userId);
+      console.log('📥 getSessionTasks called:', { sessionId, userId });
 
-      if (error) throw error;
+      const isUuid = /^[0-9a-fA-F-]{36}$/.test(userId);
 
-      const tasks = (data || []) as FocusSessionTask[];
-      set({ sessionTasks: tasks });
-      return tasks;
+      if (supabase && isUuid) {
+        // Authenticated user - use Supabase
+        const { data, error } = await supabase
+          .from('focus_session_tasks')
+          .select('*')
+          .eq('session_id', sessionId)
+          .eq('user_id', userId);
+
+        if (error) throw error;
+
+        const tasks = (data || []) as FocusSessionTask[];
+        console.log('📦 Session tasks fetched from Supabase:', tasks.length, tasks);
+        set({ sessionTasks: tasks });
+        return tasks;
+      } else {
+        // Guest user - use local storage
+        const sessionTasksKey = `session-tasks-${userId}-${sessionId}`;
+        const tasksJson = await AsyncStorage.getItem(sessionTasksKey);
+        const tasks: FocusSessionTask[] = tasksJson ? JSON.parse(tasksJson) : [];
+
+        console.log('📦 Session tasks fetched from local storage:', tasks.length, tasks);
+        set({ sessionTasks: tasks });
+        return tasks;
+      }
     } catch (error: any) {
       console.error('Error fetching session tasks:', error);
       set({ error: error.message || 'Failed to fetch session tasks' });
@@ -263,22 +387,39 @@ export const useAppData = create<AppDataState>((set, get) => ({
 
   getSessionHabits: async (sessionId: string, userId: string) => {
     try {
-      if (!supabase || !userId) {
+      if (!userId) {
         set({ sessionHabits: [] });
         return [];
       }
 
-      const { data, error } = await supabase
-        .from('focus_session_habits')
-        .select('*')
-        .eq('session_id', sessionId)
-        .eq('user_id', userId);
+      console.log('📥 getSessionHabits called:', { sessionId, userId });
 
-      if (error) throw error;
+      const isUuid = /^[0-9a-fA-F-]{36}$/.test(userId);
 
-      const habits = (data || []) as FocusSessionHabit[];
-      set({ sessionHabits: habits });
-      return habits;
+      if (supabase && isUuid) {
+        // Authenticated user - use Supabase
+        const { data, error } = await supabase
+          .from('focus_session_habits')
+          .select('*')
+          .eq('session_id', sessionId)
+          .eq('user_id', userId);
+
+        if (error) throw error;
+
+        const habits = (data || []) as FocusSessionHabit[];
+        console.log('📦 Session habits fetched from Supabase:', habits.length, habits);
+        set({ sessionHabits: habits });
+        return habits;
+      } else {
+        // Guest user - use local storage
+        const sessionHabitsKey = `session-habits-${userId}-${sessionId}`;
+        const habitsJson = await AsyncStorage.getItem(sessionHabitsKey);
+        const habits: FocusSessionHabit[] = habitsJson ? JSON.parse(habitsJson) : [];
+
+        console.log('📦 Session habits fetched from local storage:', habits.length, habits);
+        set({ sessionHabits: habits });
+        return habits;
+      }
     } catch (error: any) {
       console.error('Error fetching session habits:', error);
       set({ error: error.message || 'Failed to fetch session habits' });

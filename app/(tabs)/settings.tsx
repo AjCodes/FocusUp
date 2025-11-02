@@ -19,6 +19,7 @@ import { useUserStats } from '../../hooks/useUserStats';
 import { GlassCard } from '../../components/GlassCard';
 import { ThemeSelector } from '../../components/ThemeSelector';
 import { AuroraBackground } from '../../components/AuroraBackground';
+import { AccountCard } from '../../components/AccountCard';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
@@ -223,6 +224,9 @@ export default function Settings() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 20 }}
       >
+      <View style={{ paddingHorizontal: 20 }}>
+        <AccountCard />
+      </View>
 
       {/* Data & Storage Section */}
       <SettingsSection title="Data & Storage" icon="cloud-outline">

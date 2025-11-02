@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, Pressable, FlatList, ActivityIndicator, StyleSheet, Alert } from "react-native";
+import { View, Text, Pressable, FlatList, ActivityIndicator, StyleSheet, Alert, Animated } from "react-native";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../src/features/auth/useAuth";
 import { useTheme } from "../../components/ThemeProvider";
@@ -13,6 +13,7 @@ import { useAppData } from "../../store/appData";
 import { Ionicons } from "@expo/vector-icons";
 import { SwipeableRow } from "../../components/SwipeableRow";
 import { AddTaskModal, TaskDraft } from "../../components/AddTaskModal";
+import { Toast } from "../../components/Toast";
 
 export default function Tasks() {
   const { colors } = useTheme();
@@ -23,6 +24,25 @@ export default function Tasks() {
   const [showComposer, setShowComposer] = useState(false);
   const [creatingTask, setCreatingTask] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+
+  // Toast state
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: 'success' | 'error' | 'info';
+  }>({
+    visible: false,
+    message: '',
+    type: 'success',
+  });
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => {
+    setToast({ ...toast, visible: false });
+  };
 
   // Use appData store
   const allTasks = useAppData(state => state.tasks);
@@ -66,7 +86,7 @@ export default function Tasks() {
     try {
       const userId = session?.user?.id ?? await getUserId();
       await createTask(userId, draft.title, draft.description, draft.deadline_at ?? null);
-      showSuccess('Quest added!', 'Lock it into a sprint to earn rewards.');
+      showToast('✨ Quest added to your log!', 'success');
 
       setTimeout(async () => {
         try {
@@ -77,6 +97,7 @@ export default function Tasks() {
       }, 300);
     } catch (error) {
       handleError(error, 'Add task');
+      showToast('Failed to add quest', 'error');
     } finally {
       setCreatingTask(false);
     }
@@ -92,7 +113,7 @@ export default function Tasks() {
         description: draft.description || null,
         deadline_at: draft.deadline_at,
       }, userId);
-      showSuccess('Quest updated!');
+      showToast('📝 Quest updated successfully!', 'success');
       setEditingTask(null);
 
       setTimeout(async () => {
@@ -104,6 +125,7 @@ export default function Tasks() {
       }, 300);
     } catch (error) {
       handleError(error, 'Update task');
+      showToast('Failed to update quest', 'error');
     } finally {
       setCreatingTask(false);
     }
@@ -126,10 +148,13 @@ export default function Tasks() {
 
       // Show completion message
       if (newDoneState) {
-        showSuccess('Quest completed!', 'Finish your sprint to earn coins');
+        showToast('🎉 Quest completed!', 'success');
+      } else {
+        showToast('Quest marked as active', 'info');
       }
     } catch (error) {
       handleError(error, 'Toggle task');
+      showToast('Failed to update quest', 'error');
     } finally {
       setOperationLoading(prev => ({ ...prev, [task.id]: false }));
     }
@@ -150,9 +175,10 @@ export default function Tasks() {
               const userId = session?.user?.id ?? await getUserId();
               await deleteTask(task.id, userId);
               await refreshAll(userId);
-              showSuccess('Quest deleted');
+              showToast('🗑️ Quest deleted from log', 'success');
             } catch (error) {
               handleError(error, 'Delete task');
+              showToast('Failed to delete quest', 'error');
             } finally {
               setOperationLoading(prev => ({ ...prev, [`delete_${task.id}`]: false }));
             }
@@ -321,6 +347,12 @@ export default function Tasks() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={hideToast}
+      />
       <View style={{ flex: 1, padding: 16, paddingTop: 60 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>
@@ -363,7 +395,7 @@ export default function Tasks() {
           </Pressable>
         </View>
         <Text style={{ color: colors.textSecondary, marginBottom: 16, fontSize: 16 }}>
-          Capture quests, stack your streak, and trade victories for loot.
+          Capture quests, stack your coins, and level up!
         </Text>
         {!supabase ? (
           <GlassCard>

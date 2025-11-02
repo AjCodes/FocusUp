@@ -204,17 +204,17 @@ export function useAuth() {
     if (!supabase) return { error: new Error('Supabase not initialized') };
 
     try {
-      // Production: Use native deep linking
       const redirectTo = 'focusup://';
-
-      console.log('🔗 Redirect URI:', redirectTo);
-      console.log('📱 Platform:', require('react-native').Platform.OS);
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo,
-          skipBrowserRedirect: true, // Important for Expo/React Native
+          skipBrowserRedirect: false, // Changed to false to properly handle OAuth flow
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent', // Force consent screen to show
+          },
         },
       });
 
@@ -225,40 +225,31 @@ export function useAuth() {
 
       if (!data?.url) {
         console.error('❌ No OAuth URL returned');
-        return { error: new Error('No OAuth URL returned') };
+        return { error: new Error('No OAuth URL returned. Please check your Supabase Google OAuth configuration.') };
       }
 
       console.log('✅ Google OAuth initiated, opening browser...');
-      console.log('🔗 OAuth URL:', data.url);
 
-      // Open the browser with the OAuth URL
-      // The deep link handler will process the callback when the user is redirected back
       const result = await WebBrowser.openAuthSessionAsync(
         data.url,
         redirectTo
       );
 
-      console.log('📱 Browser result type:', result.type);
+      console.log('📱 Browser result:', result.type);
 
-      // Handle user cancellation
       if (result.type === 'cancel') {
         console.log('⚠️ User cancelled OAuth');
         return { error: new Error('User cancelled sign in') };
       }
 
-      // For success or dismiss, the deep link handler will process the tokens
-      // We just need to return success here - the actual session will be set by handleDeepLink
-      if (result.type === 'success' || result.type === 'dismiss') {
-        console.log('✅ OAuth browser flow completed, waiting for deep link callback...');
-
-        // Give the deep link handler a moment to process the callback
-        // The auth state change listener will update the session
+      if (result.type === 'success' && result.url) {
+        // Process the callback URL immediately
+        console.log('✅ OAuth success, processing callback URL...');
+        await handleDeepLink(result.url);
         return { data: null, error: null };
       }
 
-      // Any other result type is unexpected
-      console.log('⚠️ Unexpected OAuth result type:', result.type);
-      return { error: new Error('OAuth flow returned unexpected result') };
+      return { error: new Error('OAuth flow did not complete successfully') };
     } catch (err: any) {
       console.error('❌ Google sign in exception:', err);
       return { error: err };
@@ -268,19 +259,55 @@ export function useAuth() {
   const signUpWithEmail = useCallback(async (email: string, password: string, fullName: string) => {
     if (!supabase) return { error: new Error('Supabase not initialized') };
 
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: fullName,
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: 'focusup://',
+          data: {
+            full_name: fullName,
+            username: fullName,
+          },
         },
-      },
-    });
+      });
 
-    if (error) return { error };
+      if (error) return { error };
 
-    return { data, error: null };
+      // Check if user needs to confirm their email
+      // If user is auto-confirmed (email confirmation disabled), we need to handle it
+      if (data?.user) {
+        const needsEmailConfirmation = !data.user.email_confirmed_at &&
+                                       data.user.confirmation_sent_at;
+
+        // If a confirmation email was sent, sign the user out immediately
+        // to prevent auto-login
+        if (needsEmailConfirmation || !data.user.email_confirmed_at) {
+          console.log('📧 Email confirmation required, signing out user...');
+          await supabase.auth.signOut();
+          return {
+            data: { ...data, requiresEmailConfirmation: true },
+            error: null
+          };
+        }
+
+        // If email is already confirmed (shouldn't happen in normal flow)
+        // but we still want to sign them out and make them log in manually
+        if (data.user.email_confirmed_at) {
+          console.log('⚠️ User auto-confirmed, but requiring manual login...');
+          await supabase.auth.signOut();
+          return {
+            data: { ...data, requiresEmailConfirmation: false },
+            error: null
+          };
+        }
+      }
+
+      return { data, error: null };
+    } catch (err: any) {
+      console.error('❌ Signup exception:', err);
+      return { error: err };
+    }
   }, []);
 
   const signInWithEmail = useCallback(async (email: string, password: string) => {

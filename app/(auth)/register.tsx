@@ -12,12 +12,14 @@ import {
   StyleSheet,
   Image,
   Easing,
+  Alert,
 } from 'react-native';
 import { useAuth } from '../../src/features/auth/useAuth';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import { AuthStatusModal } from '../../components/AuthStatusModal';
 
 export default function Register() {
   const { signUpWithEmail } = useAuth();
@@ -33,13 +35,15 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // Success modal state
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const formSlide = useRef(new Animated.Value(30)).current;
 
   useEffect(() => {
-    // Sophisticated staggered entrance animations
     Animated.sequence([
       Animated.parallel([
         Animated.timing(fadeAnim, {
@@ -65,7 +69,6 @@ export default function Register() {
     ]).start();
   }, []);
 
-  // Password strength calculation
   const getPasswordStrength = () => {
     if (!password) return { strength: 0, label: '', color: '#64748B' };
 
@@ -91,33 +94,32 @@ export default function Register() {
   };
 
   const handleRegister = async () => {
-    // Validation
     if (!username || !email || !password || !confirmPassword) {
-      setError('Please fill in all fields');
+      Alert.alert('Missing Information', 'Please fill in all fields');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
 
     if (!validateEmail(email)) {
-      setError('Please enter a valid email address');
+      Alert.alert('Invalid Email', 'Please enter a valid email address');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
 
     if (password.length < 8) {
-      setError('Password must be at least 8 characters');
+      Alert.alert('Weak Password', 'Password must be at least 8 characters');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      Alert.alert('Password Mismatch', 'Passwords do not match');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
 
     if (!termsAccepted) {
-      setError('Please accept the terms and conditions');
+      Alert.alert('Terms Required', 'Please accept the terms and conditions to continue');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
@@ -126,26 +128,61 @@ export default function Register() {
     setError('');
 
     try {
-      const { error: signUpError } = await signUpWithEmail(email, password, username);
+      const result = await signUpWithEmail(email, password, username);
 
-      if (signUpError) {
-        setError(signUpError.message);
+      if (result.error) {
+        let userMessage = result.error.message;
+
+        if (result.error.message.includes('already registered') ||
+            result.error.message.includes('already exists') ||
+            result.error.message.includes('User already registered')) {
+          userMessage = 'This email is already registered. Try signing in instead.';
+        } else if (result.error.message.includes('password')) {
+          userMessage = 'Password is too weak. Use at least 8 characters with letters and numbers.';
+        } else if (result.error.message.includes('email')) {
+          userMessage = 'Invalid email address. Please check and try again.';
+        } else if (result.error.message.includes('rate limit')) {
+          userMessage = 'Too many signup attempts. Please try again in a few minutes.';
+        }
+
+        Alert.alert('Signup Failed', userMessage);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      } else {
+        setLoading(false);
+      } else if (result.data?.user) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        // Navigate to main app - onboarding will show on first launch
-        router.replace('/(tabs)/focus');
+
+        // Always show the confirmation modal, regardless of whether
+        // email confirmation is enabled or not
+        setShowSuccessModal(true);
+
+        setTimeout(() => {
+          setShowSuccessModal(false);
+          setLoading(false);
+          router.replace('/(auth)/login');
+        }, 3500);
+      } else {
+        Alert.alert('Signup Error', 'Account creation failed. Please try again.');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        setLoading(false);
       }
     } catch (err: any) {
-      setError(err.message || 'Registration failed');
+      Alert.alert('Signup Error', err.message || 'Registration failed. Please try again.');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    } finally {
       setLoading(false);
     }
   };
 
   return (
     <View style={styles.container}>
+      <AuthStatusModal
+        visible={showSuccessModal}
+        type="info"
+        title="Account Created!"
+        message="Please check your email to confirm your account before logging in."
+        autoClose={true}
+        autoCloseDuration={3500}
+      />
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
@@ -164,7 +201,6 @@ export default function Register() {
               },
             ]}
           >
-            {/* Header with Gradient Background */}
             <LinearGradient
               colors={['#14B8A6', '#06B6D4', '#0EA5E9']}
               style={styles.headerGradient}
@@ -179,7 +215,6 @@ export default function Register() {
               </Pressable>
             </LinearGradient>
 
-            {/* White Card with Form */}
             <Animated.View
               style={[
                 styles.formCard,
@@ -192,9 +227,7 @@ export default function Register() {
               <Text style={styles.welcomeTitle}>Create Your Account</Text>
               <Text style={styles.welcomeSubtitle}>Start your focus journey today</Text>
 
-              {/* Form */}
               <View style={styles.formContainer}>
-              {/* Username */}
               <View style={styles.inputWrapper}>
                 <Ionicons name="person-outline" size={20} color="#CBD5E1" style={styles.inputIcon} />
                 <TextInput
@@ -204,10 +237,10 @@ export default function Register() {
                   value={username}
                   onChangeText={setUsername}
                   autoCapitalize="none"
+                  editable={!loading}
                 />
               </View>
 
-              {/* Email */}
               <View style={styles.inputWrapper}>
                 <Ionicons name="mail-outline" size={20} color="#CBD5E1" style={styles.inputIcon} />
                 <TextInput
@@ -219,10 +252,10 @@ export default function Register() {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  editable={!loading}
                 />
               </View>
 
-              {/* Password */}
               <View style={styles.inputWrapper}>
                 <Ionicons name="lock-closed-outline" size={20} color="#CBD5E1" style={styles.inputIcon} />
                 <TextInput
@@ -233,10 +266,12 @@ export default function Register() {
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
                   autoCapitalize="none"
+                  editable={!loading}
                 />
                 <Pressable
                   onPress={() => setShowPassword(!showPassword)}
                   style={styles.eyeIcon}
+                  disabled={loading}
                 >
                   <Ionicons
                     name={showPassword ? 'eye-outline' : 'eye-off-outline'}
@@ -246,7 +281,6 @@ export default function Register() {
                 </Pressable>
               </View>
 
-              {/* Password Strength Indicator */}
               {password.length > 0 && (
                 <View style={styles.strengthContainer}>
                   <View style={styles.strengthBar}>
@@ -266,7 +300,6 @@ export default function Register() {
                 </View>
               )}
 
-              {/* Password Requirements */}
               {password.length > 0 && (
                 <View style={styles.requirementsContainer}>
                   <RequirementItem met={password.length >= 8} text="At least 8 characters" />
@@ -276,7 +309,6 @@ export default function Register() {
                 </View>
               )}
 
-              {/* Confirm Password */}
               <View style={styles.inputWrapper}>
                 <Ionicons name="lock-closed-outline" size={20} color="#CBD5E1" style={styles.inputIcon} />
                 <TextInput
@@ -287,10 +319,12 @@ export default function Register() {
                   onChangeText={setConfirmPassword}
                   secureTextEntry={!showConfirmPassword}
                   autoCapitalize="none"
+                  editable={!loading}
                 />
                 <Pressable
                   onPress={() => setShowConfirmPassword(!showConfirmPassword)}
                   style={styles.eyeIcon}
+                  disabled={loading}
                 >
                   <Ionicons
                     name={showConfirmPassword ? 'eye-outline' : 'eye-off-outline'}
@@ -300,10 +334,10 @@ export default function Register() {
                 </Pressable>
               </View>
 
-              {/* Terms & Conditions */}
               <Pressable
                 onPress={() => setTermsAccepted(!termsAccepted)}
                 style={styles.checkboxContainer}
+                disabled={loading}
               >
                 <View style={[styles.checkbox, termsAccepted && styles.checkboxChecked]}>
                   {termsAccepted && (
@@ -318,7 +352,6 @@ export default function Register() {
                 </Text>
               </Pressable>
 
-              {/* Error Message */}
               {error ? (
                 <View style={styles.errorContainer}>
                   <Ionicons name="alert-circle" size={16} color="#EF4444" />
@@ -326,7 +359,6 @@ export default function Register() {
                 </View>
               ) : null}
 
-              {/* Create Account Button */}
               <LinearGradient
                 colors={['#14B8A6', '#06B6D4', '#0EA5E9']}
                 start={{ x: 0, y: 0 }}
@@ -338,7 +370,8 @@ export default function Register() {
                   disabled={loading}
                   style={({ pressed }) => [
                     styles.primaryButtonInner,
-                    pressed && styles.primaryButtonPressed,
+                    pressed && !loading && styles.primaryButtonPressed,
+                    loading && { opacity: 0.7 },
                   ]}
                 >
                   {loading ? (
@@ -349,10 +382,9 @@ export default function Register() {
                 </Pressable>
               </LinearGradient>
 
-              {/* Sign In Link */}
               <View style={styles.signInContainer}>
                 <Text style={styles.signInText}>Already have an account? </Text>
-                <Pressable onPress={() => router.back()}>
+                <Pressable onPress={() => router.back()} disabled={loading}>
                   <Text style={styles.signInLink}>Sign In</Text>
                 </Pressable>
               </View>
@@ -365,7 +397,6 @@ export default function Register() {
   );
 }
 
-// Helper Component
 const RequirementItem = ({ met, text }: { met: boolean; text: string }) => (
   <View style={styles.requirementItem}>
     <Ionicons

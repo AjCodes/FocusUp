@@ -19,9 +19,10 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import { AuthStatusModal } from '../../components/AuthStatusModal';
 
 export default function Login() {
-  const { signInWithGoogle, signInWithEmail, continueAsGuest, isAuthenticated, signOut, guest } = useAuth();
+  const { signInWithGoogle, signInWithEmail, continueAsGuest, isAuthenticated, signOut, guest, session } = useAuth();
   const router = useRouter();
 
   const [email, setEmail] = useState('');
@@ -30,6 +31,11 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showSignOutPrompt, setShowSignOutPrompt] = useState(false);
+
+  // Success modal state
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [userEmail, setUserEmail] = useState('');
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -43,30 +49,47 @@ export default function Login() {
   const initialAuthCheck = useRef(true);
 
   useEffect(() => {
-    // Check if user is already authenticated
     if (isAuthenticated) {
-      // If this is initial check and user is already logged in, show sign out prompt
       if (initialAuthCheck.current) {
         setShowSignOutPrompt(true);
       }
-      // If OAuth flow was active and now authenticated, navigate to focus
       else if (oauthFlowActive.current) {
-        console.log('✅ OAuth authentication successful, navigating to focus screen');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setLoading(false);
         oauthFlowActive.current = false;
-        router.replace('/(tabs)/focus');
+
+        const email = session?.user?.email || 'your account';
+        setUserEmail(email);
+        setSuccessMessage(`You're now logged in as ${email}`);
+        setShowSuccessModal(true);
+
+        setTimeout(() => {
+          setShowSuccessModal(false);
+          router.replace('/(tabs)/focus');
+        }, 1800);
+      } else {
+        // Handle case where user is authenticated but not from active OAuth flow
+        // This can happen if they land on login page after OAuth callback completes
+        console.log('🔄 User authenticated via external flow, redirecting...');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+        const email = session?.user?.email || 'your account';
+        setUserEmail(email);
+        setSuccessMessage(`You're now logged in as ${email}`);
+        setShowSuccessModal(true);
+
+        setTimeout(() => {
+          setShowSuccessModal(false);
+          router.replace('/(tabs)/focus');
+        }, 1800);
       }
     }
 
-    // Mark that initial check is complete
     initialAuthCheck.current = false;
-  }, [isAuthenticated]);
+  }, [isAuthenticated, session]);
 
   useEffect(() => {
-    // Sophisticated staggered entrance animations
     Animated.sequence([
-      // Logo animation first
       Animated.parallel([
         Animated.spring(logoScale, {
           toValue: 1,
@@ -81,7 +104,6 @@ export default function Login() {
           useNativeDriver: true,
         }),
       ]),
-      // Then background and form
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
@@ -108,7 +130,7 @@ export default function Login() {
 
   const handleEmailSignIn = async () => {
     if (!email || !password) {
-      setError('Please enter email and password');
+      Alert.alert('Missing Information', 'Please enter both email and password');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
@@ -117,14 +139,11 @@ export default function Login() {
     setError('');
 
     try {
-      console.log('🔐 Attempting sign in with email:', email);
       const result = await signInWithEmail(email, password);
 
       if (result.error) {
         const signInError = result.error;
-        console.error('❌ Sign in error:', signInError);
 
-        // Provide more helpful error messages
         let userMessage = signInError.message;
 
         if (signInError.message.includes('Invalid login credentials') ||
@@ -138,18 +157,26 @@ export default function Login() {
           userMessage = 'Too many login attempts. Please try again in a few minutes.';
         }
 
-        setError(userMessage);
+        Alert.alert('Sign In Failed', userMessage);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        setLoading(false);
       } else {
-        console.log('✅ Sign in successful:', result.data?.user?.email);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        router.replace('/(tabs)/focus');
+
+        const userEmailValue = result.data?.user?.email || email;
+        setUserEmail(userEmailValue);
+        setSuccessMessage(`You're now logged in as ${userEmailValue}`);
+        setShowSuccessModal(true);
+
+        setTimeout(() => {
+          setShowSuccessModal(false);
+          setLoading(false);
+          router.replace('/(tabs)/focus');
+        }, 1800);
       }
     } catch (err: any) {
-      console.error('❌ Sign in exception:', err);
-      setError(err.message || 'Sign in failed. Please try again.');
+      Alert.alert('Sign In Error', err.message || 'Sign in failed. Please try again.');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    } finally {
       setLoading(false);
     }
   };
@@ -157,15 +184,12 @@ export default function Login() {
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError('');
-    oauthFlowActive.current = true; // Mark that OAuth flow has started
+    oauthFlowActive.current = true;
 
     try {
-      console.log('🔐 Attempting Google OAuth sign in...');
       const { error: googleError } = await signInWithGoogle();
 
       if (googleError) {
-        console.error('❌ Google OAuth error:', googleError);
-
         let userMessage = googleError.message;
 
         if (googleError.message.includes('not configured') ||
@@ -179,22 +203,16 @@ export default function Login() {
           userMessage = 'OAuth redirect issue. Please ensure the app is properly configured.';
         }
 
-        setError(userMessage);
+        Alert.alert('Google Sign In Failed', userMessage);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         setLoading(false);
-        oauthFlowActive.current = false; // Reset on error
-      } else {
-        // OAuth browser flow completed successfully
-        // The deep link handler will process the callback and establish the session
-        // The auth state change listener will then trigger navigation
-        console.log('✅ OAuth browser flow initiated, waiting for authentication...');
+        oauthFlowActive.current = false;
       }
     } catch (err: any) {
-      console.error('❌ Google sign in exception:', err);
-      setError(err.message || 'Google sign in failed. Please try again.');
+      Alert.alert('Google Sign In Error', err.message || 'Google sign in failed. Please try again.');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setLoading(false);
-      oauthFlowActive.current = false; // Reset on error
+      oauthFlowActive.current = false;
     }
   };
 
@@ -203,16 +221,32 @@ export default function Login() {
     try {
       await continueAsGuest();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace('/(tabs)/focus');
+
+      setSuccessMessage("You're continuing as a guest");
+      setShowSuccessModal(true);
+
+      setTimeout(() => {
+        setShowSuccessModal(false);
+        setLoading(false);
+        router.replace('/(tabs)/focus');
+      }, 1500);
     } catch (err: any) {
-      setError(err.message || 'Failed to continue as guest');
-    } finally {
+      Alert.alert('Error', err.message || 'Failed to continue as guest');
       setLoading(false);
     }
   };
 
   return (
     <View style={styles.container}>
+      <AuthStatusModal
+        visible={showSuccessModal}
+        type="success"
+        title="Welcome Back!"
+        message={successMessage}
+        autoClose={true}
+        autoCloseDuration={1800}
+      />
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
@@ -222,7 +256,6 @@ export default function Login() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Already Authenticated Prompt */}
           {showSignOutPrompt && (
             <View style={styles.alreadyAuthContainer}>
               <View style={styles.alreadyAuthCard}>
@@ -275,7 +308,6 @@ export default function Login() {
               },
             ]}
           >
-            {/* Header with Gradient Background */}
             <Animated.View style={{ opacity: fadeAnim }}>
               <LinearGradient
                 colors={['#14B8A6', '#06B6D4', '#0EA5E9']}
@@ -303,7 +335,6 @@ export default function Login() {
               </LinearGradient>
             </Animated.View>
 
-            {/* White Card with Form */}
             <Animated.View
               style={[
                 styles.formCard,
@@ -316,9 +347,7 @@ export default function Login() {
               <Text style={styles.welcomeTitle}>Welcome</Text>
               <Text style={styles.welcomeSubtitle}>Sign in to continue your focus journey</Text>
 
-              {/* Email/Password Form */}
               <View style={styles.formContainer}>
-              {/* Email Input */}
               <View style={styles.inputWrapper}>
                 <Ionicons name="mail-outline" size={20} color="#CBD5E1" style={styles.inputIcon} />
                 <TextInput
@@ -333,7 +362,6 @@ export default function Login() {
                 />
               </View>
 
-              {/* Password Input */}
               <View style={styles.inputWrapper}>
                 <Ionicons name="lock-closed-outline" size={20} color="#CBD5E1" style={styles.inputIcon} />
                 <TextInput
@@ -357,7 +385,6 @@ export default function Login() {
                 </Pressable>
               </View>
 
-              {/* Forgot Password */}
               <Pressable
                 onPress={() => router.push('/(auth)/forgot-password' as any)}
                 style={styles.forgotPassword}
@@ -365,7 +392,6 @@ export default function Login() {
                 <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
               </Pressable>
 
-              {/* Error Message */}
               {error ? (
                 <View style={styles.errorContainer}>
                   <Ionicons name="alert-circle" size={16} color="#EF4444" />
@@ -373,7 +399,6 @@ export default function Login() {
                 </View>
               ) : null}
 
-              {/* Sign In Button */}
               <LinearGradient
                 colors={['#14B8A6', '#06B6D4', '#0EA5E9']}
                 start={{ x: 0, y: 0 }}
@@ -397,14 +422,12 @@ export default function Login() {
               </LinearGradient>
             </View>
 
-              {/* Divider */}
               <View style={styles.divider}>
                 <View style={styles.dividerLine} />
                 <Text style={styles.dividerText}>Or continue with</Text>
                 <View style={styles.dividerLine} />
               </View>
 
-              {/* Google Login Button */}
               <Pressable
                 onPress={handleGoogleSignIn}
                 disabled={loading}
@@ -417,7 +440,6 @@ export default function Login() {
                 <Text style={styles.googleButtonText}>Continue with Google</Text>
               </Pressable>
 
-              {/* Create Account Link */}
               <View style={styles.signupPrompt}>
                 <Text style={styles.signupText}>Don't have an account? </Text>
                 <Pressable onPress={() => router.push('/(auth)/register' as any)}>
@@ -425,7 +447,6 @@ export default function Login() {
                 </Pressable>
               </View>
 
-              {/* Guest Access */}
               <Pressable
                 onPress={handleGuestContinue}
                 disabled={loading}
@@ -712,5 +733,3 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.98 }],
   },
 });
-
-

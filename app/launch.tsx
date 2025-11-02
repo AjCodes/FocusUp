@@ -43,6 +43,45 @@ export default function Launch() {
 
   useEffect(() => {
     let isMounted = true;
+    let authCheckAttempts = 0;
+    const MAX_AUTH_CHECK_ATTEMPTS = 5;
+    const AUTH_CHECK_DELAY = 300;
+
+    const checkAuthSession = async (): Promise<boolean> => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        return !!data?.session;
+      } catch (error) {
+        console.error('Auth session check error:', error);
+        return false;
+      }
+    };
+
+    const waitForAuth = async (): Promise<boolean> => {
+      // Check if there's already a session
+      let hasSession = await checkAuthSession();
+
+      if (hasSession) {
+        console.log('✅ Session found immediately');
+        return true;
+      }
+
+      // If no session, retry a few times to handle OAuth callback race condition
+      while (authCheckAttempts < MAX_AUTH_CHECK_ATTEMPTS && !hasSession && isMounted) {
+        console.log(`⏳ Waiting for auth session (attempt ${authCheckAttempts + 1}/${MAX_AUTH_CHECK_ATTEMPTS})...`);
+        await new Promise(resolve => setTimeout(resolve, AUTH_CHECK_DELAY));
+        hasSession = await checkAuthSession();
+        authCheckAttempts++;
+      }
+
+      if (hasSession) {
+        console.log('✅ Session established after retries');
+      } else {
+        console.log('❌ No session found after retries');
+      }
+
+      return hasSession;
+    };
 
     const prepare = async () => {
       try {
@@ -61,15 +100,15 @@ export default function Launch() {
           setLogoSource({ uri: logoAsset.localUri ?? logoAsset.uri });
         }
 
-        const sessionPromise = supabase.auth.getSession();
-        const timeout = new Promise<null>(resolve => setTimeout(() => resolve(null), MAX_PRELOAD_WAIT));
-        const sessionResult = (await Promise.race([sessionPromise, timeout])) || (await sessionPromise);
+        // Wait for authentication with retry logic
+        const hasAuthSession = await waitForAuth();
 
         if (!isMounted) {
           return;
         }
 
-        const destination = sessionResult?.data?.session ? '/(tabs)/focus' : '/(auth)/login';
+        const destination = hasAuthSession ? '/(tabs)/focus' : '/(auth)/login';
+        console.log('🎯 Routing to:', destination);
         setTargetRoute(destination);
 
         if (hasPlayed) {

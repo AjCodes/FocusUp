@@ -65,11 +65,20 @@ export const FocusSelectModal: React.FC<FocusSelectModalProps> = ({
     });
   };
 
-  const handleConfirm = () => {
-    onConfirm(Array.from(selectedTaskIds), Array.from(selectedHabitIds));
+  const handleConfirm = async () => {
+    const taskIdsArray = Array.from(selectedTaskIds);
+    const habitIdsArray = Array.from(selectedHabitIds);
+
+    console.log('🎯 Modal handleConfirm called with:', { taskIdsArray, habitIdsArray });
+
+    // Clear selections first
     setSelectedTaskIds(new Set());
     setSelectedHabitIds(new Set());
-    onClose();
+
+    // Call the parent's onConfirm and wait for it
+    await onConfirm(taskIdsArray, habitIdsArray);
+
+    console.log('✅ Modal onConfirm completed');
   };
 
   const handleClose = () => {

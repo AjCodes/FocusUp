@@ -9,6 +9,7 @@ import { TopBar } from "../../components/TopBar";
 import { FocusSelectModal } from "../../components/FocusSelectModal";
 import { EndSessionModal } from "../../components/EndSessionModal";
 import { TimerSettingsModal } from "../../components/TimerSettingsModal";
+import { Toast } from "../../components/Toast";
 import { useAppData } from "../../store/appData";
 import { useUserStats } from "../../hooks/useUserStats";
 import { supabase } from "../../lib/supabase";
@@ -85,6 +86,38 @@ export default function Focus() {
   const getSessionTasks = useAppData(state => state.getSessionTasks);
   const getSessionHabits = useAppData(state => state.getSessionHabits);
   const [recentSessions, setRecentSessions] = useState<FocusSession[]>([]);
+  const [forceRefresh, setForceRefresh] = useState(0);
+
+  // Toast state
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: 'success' | 'error' | 'info';
+    action?: { label: string; onPress: () => void };
+  }>({
+    visible: false,
+    message: '',
+    type: 'success',
+  });
+
+  // Store last added items for undo
+  const [lastAddedItems, setLastAddedItems] = useState<{
+    sessionId: string;
+    taskIds: string[];
+    habitIds: string[];
+  } | null>(null);
+
+  const showToast = (
+    message: string,
+    type: 'success' | 'error' | 'info' = 'success',
+    action?: { label: string; onPress: () => void }
+  ) => {
+    setToast({ visible: true, message, type, action });
+  };
+
+  const hideToast = () => {
+    setToast({ ...toast, visible: false });
+  };
 
   const getUserId = async (): Promise<string> => {
     let userId = await AsyncStorage.getItem(USER_ID_KEY);
@@ -94,6 +127,16 @@ export default function Focus() {
     }
     return userId;
   };
+
+  // Debug: Log when session items change
+  useEffect(() => {
+    console.log('🔄 Session items updated:', {
+      sessionTasks: sessionTasks.length,
+      sessionHabits: sessionHabits.length,
+      tasks: tasks.length,
+      habits: habits.length,
+    });
+  }, [sessionTasks, sessionHabits, tasks, habits]);
 
 
   useEffect(() => {
@@ -117,6 +160,25 @@ export default function Focus() {
     };
     initData();
   }, [session?.user?.id]);
+
+  // Load session items when currentSessionId changes
+  useEffect(() => {
+    const loadSessionItems = async () => {
+      if (currentSessionId) {
+        const userId = session?.user?.id ?? await getUserId();
+        console.log('🔄 Loading session items for session:', currentSessionId);
+        await Promise.all([
+          getSessionTasks(currentSessionId, userId),
+          getSessionHabits(currentSessionId, userId),
+        ]);
+        console.log('✅ Session items loaded:', {
+          tasks: sessionTasks.length,
+          habits: sessionHabits.length,
+        });
+      }
+    };
+    loadSessionItems();
+  }, [currentSessionId]);
 
   const loadSettings = async () => {
     try {
@@ -359,37 +421,190 @@ export default function Focus() {
     }
   };
 
-  const handleSelectConfirm = async (taskIds: string[], habitIds: string[]) => {
-    if (!currentSessionId) {
-      // Create session first if not exists
+  const handleUndoAddItems = async () => {
+    if (!lastAddedItems) return;
+
+    try {
       const userId = session?.user?.id ?? await getUserId();
-      const sessionId = await startSession({
-        mode: 'work',
-        duration: workDuration,
-        userId,
-      });
-      if (!sessionId) return;
-      setCurrentSessionId(sessionId);
-      await attachToSession({
-        sessionId,
-        taskIds,
-        habitIds,
-        userId,
-      });
-    } else {
-      const userId = session?.user?.id ?? await getUserId();
-      await attachToSession({
-        sessionId: currentSessionId,
-        taskIds,
-        habitIds,
-        userId,
-      });
+      const { sessionId, taskIds, habitIds } = lastAddedItems;
+
+      console.log('🔙 Undoing add items:', { sessionId, taskIds, habitIds });
+
+      // Delete items from session using Supabase or local storage
+      const isUuid = /^[0-9a-fA-F-]{36}$/.test(userId);
+
+      if (supabase && isUuid) {
+        // Delete from Supabase
+        if (taskIds.length > 0) {
+          await supabase
+            .from('focus_session_tasks')
+            .delete()
+            .eq('session_id', sessionId)
+            .in('task_id', taskIds);
+        }
+
+        if (habitIds.length > 0) {
+          await supabase
+            .from('focus_session_habits')
+            .delete()
+            .eq('session_id', sessionId)
+            .in('habit_id', habitIds);
+        }
+      } else {
+        // Delete from local storage
+        const sessionTasksKey = `session-tasks-${userId}-${sessionId}`;
+        const sessionHabitsKey = `session-habits-${userId}-${sessionId}`;
+
+        const tasksJson = await AsyncStorage.getItem(sessionTasksKey);
+        const habitsJson = await AsyncStorage.getItem(sessionHabitsKey);
+
+        if (tasksJson) {
+          const tasks = JSON.parse(tasksJson);
+          const filtered = tasks.filter((t: any) => !taskIds.includes(t.task_id));
+          await AsyncStorage.setItem(sessionTasksKey, JSON.stringify(filtered));
+        }
+
+        if (habitsJson) {
+          const habits = JSON.parse(habitsJson);
+          const filtered = habits.filter((h: any) => !habitIds.includes(h.habit_id));
+          await AsyncStorage.setItem(sessionHabitsKey, JSON.stringify(filtered));
+        }
+      }
+
+      // Refresh session items
+      await Promise.all([
+        getSessionTasks(sessionId, userId),
+        getSessionHabits(sessionId, userId),
+      ]);
+
+      setLastAddedItems(null);
+      showToast('Items removed from session', 'info');
+    } catch (error) {
+      console.error('Error undoing add:', error);
+      showToast('Failed to undo', 'error');
     }
-    // Refresh session tasks/habits
-    if (currentSessionId) {
+  };
+
+  const handleSelectConfirm = async (taskIds: string[], habitIds: string[]) => {
+    try {
+      console.log('📝 handleSelectConfirm called with:', { taskIds, habitIds });
+
       const userId = session?.user?.id ?? await getUserId();
-      await getSessionTasks(currentSessionId, userId);
-      await getSessionHabits(currentSessionId, userId);
+      console.log('👤 User ID:', userId);
+      console.log('👤 User ID type:', typeof userId);
+      console.log('👤 Session object:', session);
+      console.log('👤 Is authenticated:', !!session?.user?.id);
+
+      let activeSessionId = currentSessionId;
+      console.log('🎯 Current session ID:', activeSessionId);
+
+      if (!activeSessionId) {
+        console.log('🆕 Creating new session...');
+        const sessionId = await startSession({
+          mode: 'work',
+          duration: workDuration,
+          userId,
+        });
+
+        if (!sessionId) {
+          console.error('❌ Failed to create session - startSession returned null');
+          return;
+        }
+
+        console.log('✅ Session created:', sessionId);
+        setCurrentSessionId(sessionId);
+        activeSessionId = sessionId;
+      }
+
+      console.log('📎 Attaching items to session:', activeSessionId);
+
+      // Attach items to session
+      await attachToSession({
+        sessionId: activeSessionId,
+        taskIds,
+        habitIds,
+        userId,
+      });
+
+      console.log('✅ Items attached, refreshing all data...');
+
+      // Refresh ALL data including tasks, habits, and session items
+      // This ensures that newly created items are available for rendering
+      await refreshAll(userId);
+
+      // Then refresh session tasks/habits
+      const [sessionTasksResult, sessionHabitsResult] = await Promise.all([
+        getSessionTasks(activeSessionId, userId),
+        getSessionHabits(activeSessionId, userId),
+      ]);
+
+      console.log('✅ All data refreshed:', {
+        sessionTasks: sessionTasksResult.length,
+        sessionHabits: sessionHabitsResult.length,
+        tasksInStore: tasks.length,
+        habitsInStore: habits.length,
+      });
+
+      // Log what we actually have in session
+      console.log('📊 Session tasks:', sessionTasksResult.map(st => ({
+        id: st.id,
+        task_id: st.task_id,
+        session_id: st.session_id,
+      })));
+
+      console.log('📊 Session habits:', sessionHabitsResult.map(sh => ({
+        id: sh.id,
+        habit_id: sh.habit_id,
+        session_id: sh.session_id,
+      })));
+
+      // Verify that the tasks/habits exist in the store
+      console.log('🔍 Checking if session items exist in store...');
+      for (const st of sessionTasksResult) {
+        const task = tasks.find(t => t.id === st.task_id);
+        if (task) {
+          console.log(`✅ Task found: ${task.title} (${task.id})`);
+        } else {
+          console.log(`❌ Task NOT found in store: ${st.task_id}`);
+        }
+      }
+      for (const sh of sessionHabitsResult) {
+        const habit = habits.find(h => h.id === sh.habit_id);
+        if (habit) {
+          console.log(`✅ Habit found: ${habit.title} (${habit.id})`);
+        } else {
+          console.log(`❌ Habit NOT found in store: ${sh.habit_id}`);
+        }
+      }
+
+      // Force a small delay to ensure state updates propagate
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Force re-render
+      setForceRefresh(prev => prev + 1);
+
+      // Store last added items for undo
+      setLastAddedItems({
+        sessionId: activeSessionId,
+        taskIds,
+        habitIds,
+      });
+
+      // Show success toast with undo button
+      const itemCount = taskIds.length + habitIds.length;
+      showToast(
+        `${itemCount} item${itemCount > 1 ? 's' : ''} added to session`,
+        'success',
+        {
+          label: 'UNDO',
+          onPress: handleUndoAddItems,
+        }
+      );
+
+      console.log('✅ handleSelectConfirm completed');
+    } catch (error) {
+      console.error('❌ Error in handleSelectConfirm:', error);
+      showToast('Failed to add items to session', 'error');
     }
   };
 
@@ -407,11 +622,18 @@ export default function Focus() {
   });
 
   return (
-    <View style={{ 
-      flex: 1, 
+    <View style={{
+      flex: 1,
       backgroundColor: colors.background,
     }}>
-      <TopBar 
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={hideToast}
+        action={toast.action}
+      />
+      <TopBar
         showStats={true}
         showTitle={false}
         streak={userStats.current_streak}
@@ -566,13 +788,20 @@ export default function Focus() {
           </View>
           <GlassCard style={{ marginTop: 16, marginBottom: 20 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <Text style={{ 
-                color: colors.text, 
-                fontSize: 16, 
-                fontWeight: '600',
-              }}>
-                Current Focus Session
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{
+                  color: colors.text,
+                  fontSize: 16,
+                  fontWeight: '600',
+                }}>
+                  Current Focus Session
+                </Text>
+                {currentSessionId && (
+                  <Text style={{ color: colors.textSecondary, fontSize: 9 }}>
+                    Session: {currentSessionId.substring(0, 8)}...
+                  </Text>
+                )}
+              </View>
               <Pressable
                 onPress={() => setShowSelectModal(true)}
                 style={{
@@ -595,6 +824,11 @@ export default function Focus() {
                 <Ionicons name="add" size={20} color={colors.background} />
               </Pressable>
             </View>
+            {/* DEBUG INFO - Remove after fixing */}
+            <Text style={{ color: colors.textSecondary, fontSize: 10, marginBottom: 8 }}>
+              Debug: {sessionTasks.length} tasks, {sessionHabits.length} habits in session
+            </Text>
+
             {sessionTasks.length === 0 && sessionHabits.length === 0 ? (
               <Text style={{ color: colors.textSecondary, fontStyle: 'italic' }}>
                 No items selected. Use the + button to line up your focus goals.
@@ -603,7 +837,18 @@ export default function Focus() {
               <>
                 {sessionTasks.map((st) => {
                   const task = tasks.find(t => t.id === st.task_id);
-                  if (!task) return null;
+                  if (!task) {
+                    console.log('⚠️ Task not found for session task:', {
+                      sessionTaskId: st.id,
+                      taskId: st.task_id,
+                      availableTasks: tasks.map(t => t.id),
+                    });
+                    return (
+                      <Text key={st.id} style={{ color: 'red', fontSize: 12 }}>
+                        ⚠️ Task {st.task_id.substring(0, 8)}... not found
+                      </Text>
+                    );
+                  }
                   return (
                     <View key={st.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                       <View style={{
@@ -622,7 +867,18 @@ export default function Focus() {
                 })}
                 {sessionHabits.map((sh) => {
                   const habit = habits.find(h => h.id === sh.habit_id);
-                  if (!habit) return null;
+                  if (!habit) {
+                    console.log('⚠️ Habit not found for session habit:', {
+                      sessionHabitId: sh.id,
+                      habitId: sh.habit_id,
+                      availableHabits: habits.map(h => h.id),
+                    });
+                    return (
+                      <Text key={sh.id} style={{ color: 'orange', fontSize: 12 }}>
+                        ⚠️ Habit {sh.habit_id.substring(0, 8)}... not found
+                      </Text>
+                    );
+                  }
                   return (
                     <View key={sh.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                       <View style={{
@@ -714,8 +970,16 @@ export default function Focus() {
       </Modal>
       <FocusSelectModal
         visible={showSelectModal}
-        onClose={() => setShowSelectModal(false)}
-        onConfirm={handleSelectConfirm}
+        onClose={() => {
+          console.log('🚪 Modal closed');
+          setShowSelectModal(false);
+        }}
+        onConfirm={async (taskIds, habitIds) => {
+          console.log('✅ Modal confirmed, processing...');
+          await handleSelectConfirm(taskIds, habitIds);
+          console.log('✅ Processing complete, closing modal...');
+          setShowSelectModal(false);
+        }}
       />
       <EndSessionModal
         visible={showEndSessionModal}
