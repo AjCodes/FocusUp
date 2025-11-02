@@ -7,14 +7,6 @@ import { DailyTracker } from '../src/features/rewards/DailyTracker';
 
 const USER_ID_KEY = 'focusup-user-id';
 
-let sharedProfileImageUri: string | null = null;
-const profileImageListeners = new Set<(uri: string | null) => void>();
-
-const emitProfileImage = (uri: string | null) => {
-  sharedProfileImageUri = uri;
-  profileImageListeners.forEach(listener => listener(uri));
-};
-
 type ThemeMode = 'focus' | 'break';
 type AttributeKey = 'PH' | 'CO' | 'EM' | 'SO';
 
@@ -42,15 +34,7 @@ const normalizeStats = (
 export const useUserStats = () => {
   const [userStats, setUserStats] = useState<UserStats>(() => normalizeStats());
   const [loading, setLoading] = useState(true);
-  const [profileImageUri, setProfileImageUriState] = useState<string | null>(() => sharedProfileImageUri);
-
-  useEffect(() => {
-    const listener = (uri: string | null) => setProfileImageUriState(uri);
-    profileImageListeners.add(listener);
-    return () => {
-      profileImageListeners.delete(listener);
-    };
-  }, []);
+  const [profileImageUri, setProfileImageUriState] = useState<string | null>(null);
 
   const getUserId = async (): Promise<string> => {
     // First check if user is authenticated with Supabase
@@ -84,8 +68,9 @@ export const useUserStats = () => {
   const loadProfileImage = async (userId: string) => {
     try {
       const storedUri = await AsyncStorage.getItem(`profile-image-${userId}`);
-      setProfileImageUriState(storedUri);
-      emitProfileImage(storedUri);
+      if (storedUri) {
+        setProfileImageUriState(storedUri);
+      }
     } catch (error) {
       console.error('Error loading profile image:', error);
     }
@@ -438,7 +423,6 @@ export const useUserStats = () => {
     profileImageUri,
     setProfileImageUri: async (uri: string | null) => {
       setProfileImageUriState(uri);
-      emitProfileImage(uri);
       try {
         const userId = await getUserId();
         if (uri) {

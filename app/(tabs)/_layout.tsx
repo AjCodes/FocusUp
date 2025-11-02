@@ -7,7 +7,7 @@ import { useTheme } from "../../components/ThemeProvider";
 function CustomTabBar({ state, descriptors, navigation }: any) {
   const [animationValue] = useState(new Animated.Value(0));
   const { width: screenWidth } = Dimensions.get('window');
-  const { colors } = useTheme();
+  const { colors, currentTheme } = useTheme();
 
   const hexToRgba = (hex: string, alpha: number) => {
     const normalized = hex.replace('#', '');
@@ -42,20 +42,34 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
   const horizontalPadding = Math.max((maxShellWidth - tabBarWidth) / 2, 0);
   const containerHeight = 48;
   const indicatorWidth = tabWidth;
-  const indicatorHeight = containerHeight;
+  const indicatorInset = isLightTheme ? 4 : 2;
+  const indicatorHeight = containerHeight - indicatorInset * 2;
   const translateInputRange = visibleRoutes.map((_: any, idx: number) => idx);
   const translateOutputRange = translateInputRange.map((idx: number) => idx * tabWidth);
-  const indicatorBackground = hexToRgba(colors.primary, 0.25);
-  const indicatorBorderColor = hexToRgba(colors.primary, 0.4);
+  const isLightTheme = currentTheme === 'solarDawn' || currentTheme === 'zenGarden';
+
+  const containerBackground = isLightTheme
+    ? (currentTheme === 'zenGarden' ? 'rgba(255, 255, 255, 0.94)' : 'rgba(255, 255, 255, 0.92)')
+    : 'rgba(15, 23, 42, 0.88)';
+  const containerBorderColor = isLightTheme ? 'rgba(148, 163, 184, 0.25)' : 'transparent';
+  const indicatorBackground = isLightTheme
+    ? hexToRgba(colors.primary, 0.18)
+    : hexToRgba(colors.primary, 0.25);
+  const indicatorBorderColor = isLightTheme
+    ? hexToRgba(colors.primary, 0.35)
+    : hexToRgba(colors.primary, 0.4);
+  const inactiveLabelColor = isLightTheme ? '#64748B' : '#94A3B8';
+  const activeLabelColor = isLightTheme ? colors.primary : '#F1F5F9';
+  const shadowColor = isLightTheme ? 'rgba(15, 23, 42, 0.25)' : colors.primary;
 
   const indicatorStyle = {
     position: 'absolute' as const,
-    top: 0,
+    top: indicatorInset,
     left: horizontalPadding,
     width: indicatorWidth,
     height: indicatorHeight,
     backgroundColor: indicatorBackground,
-    borderRadius: containerHeight / 2,
+    borderRadius: (containerHeight / 2) - indicatorInset,
     borderWidth: 1,
     borderColor: indicatorBorderColor,
     transform: [{
@@ -70,7 +84,9 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
   return (
     <View
       style={{
-        backgroundColor: 'rgba(15, 23, 42, 0.88)',
+        backgroundColor: containerBackground,
+        borderWidth: isLightTheme ? 1 : 0,
+        borderColor: containerBorderColor,
         borderRadius: containerHeight / 2 + 3,
         marginHorizontal,
         marginBottom: 16,
@@ -80,11 +96,11 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
         bottom: 0,
         alignSelf: 'center',
         width: maxShellWidth,
-        shadowColor: colors.primary,
+        shadowColor,
         shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.25,
-        shadowRadius: 16,
-        elevation: 12,
+        shadowOpacity: isLightTheme ? 0.18 : 0.25,
+        shadowRadius: isLightTheme ? 12 : 16,
+        elevation: isLightTheme ? 6 : 12,
         overflow: 'hidden',
         paddingHorizontal: horizontalPadding,
       }}
@@ -131,7 +147,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
             <Text style={{
               fontSize: isFocused ? 15 : 14,
               fontWeight: isFocused ? '700' : '500',
-              color: isFocused ? '#F1F5F9' : '#94A3B8',
+              color: isFocused ? activeLabelColor : inactiveLabelColor,
               textAlign: 'center',
               letterSpacing: 0.2,
               textTransform: 'none',

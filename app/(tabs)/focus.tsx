@@ -549,52 +549,55 @@ export default function Focus() {
             </View>
             <Pressable
               onPress={handleSwitchMode}
-              style={{
-                backgroundColor: colors.cardBackground,
-                paddingVertical: 12,
-                paddingHorizontal: 24,
-                borderRadius: 20,
-                marginTop: 20,
-                borderWidth: 1,
-                borderColor: colors.primary,
-              }}
+            style={{
+              backgroundColor: colors.cardBackground,
+              paddingVertical: 12,
+              paddingHorizontal: 24,
+              borderRadius: 20,
+              marginTop: 16,
+              borderWidth: 1,
+              borderColor: colors.primary,
+            }}
             >
               <Text style={{ color: colors.text, fontWeight: '600', fontSize: 14 }}>
                 Switch to {mode === 'focus' ? 'Break' : 'Focus'} Mode
               </Text>
             </Pressable>
           </View>
-          <Pressable
-            onPress={() => setShowSelectModal(true)}
-            style={{
-              backgroundColor: colors.primary,
-              paddingVertical: 14,
-              paddingHorizontal: 20,
-              borderRadius: 12,
-              alignItems: 'center',
-              marginBottom: 20,
-              flexDirection: 'row',
-              justifyContent: 'center',
-              gap: 8,
-            }}
-          >
-            <Text style={{ fontSize: 20 }}>+</Text>
-            <Text style={{ color: colors.background, fontWeight: '600', fontSize: 16 }}>
-              Task/Habit
-            </Text>
-          </Pressable>
-          <GlassCard style={{ marginBottom: 20 }}>
-            <Text style={{ 
-              color: colors.text, 
-              fontSize: 16, 
-              fontWeight: '600',
-              marginBottom: 12,
-            }}>
-              Current Focus Session
-            </Text>
+          <GlassCard style={{ marginTop: 16, marginBottom: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <Text style={{ 
+                color: colors.text, 
+                fontSize: 16, 
+                fontWeight: '600',
+              }}>
+                Current Focus Session
+              </Text>
+              <Pressable
+                onPress={() => setShowSelectModal(true)}
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 19,
+                  backgroundColor: colors.primary,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  shadowColor: colors.primary,
+                  shadowOpacity: 0.3,
+                  shadowRadius: 8,
+                  elevation: 6,
+                  borderWidth: 1,
+                  borderColor: colors.primary + '55',
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Add tasks or habits to session"
+              >
+                <Ionicons name="add" size={20} color={colors.background} />
+              </Pressable>
+            </View>
             {sessionTasks.length === 0 && sessionHabits.length === 0 ? (
               <Text style={{ color: colors.textSecondary, fontStyle: 'italic' }}>
-                No items selected. Tap + above to add tasks or habits.
+                No items selected. Use the + button to line up your focus goals.
               </Text>
             ) : (
               <>
@@ -739,5 +742,3 @@ export default function Focus() {
     </View>
   );
 }
-
-

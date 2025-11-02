@@ -17,10 +17,11 @@ import { useAuth } from '../../src/features/auth/useAuth';
 import { useDataBackup } from '../../hooks/useDataBackup';
 import { useUserStats } from '../../hooks/useUserStats';
 import { GlassCard } from '../../components/GlassCard';
+import { ThemeSelector } from '../../components/ThemeSelector';
+import { AuroraBackground } from '../../components/AuroraBackground';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 
 export default function Settings() {
   const { colors } = useTheme();
@@ -192,10 +193,8 @@ export default function Settings() {
   };
 
   return (
-    <LinearGradient
-      colors={['#0A0F1C', '#1E293B', '#0A0F1C']}
-      style={styles.container}
-    >
+    <AuroraBackground>
+      <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -300,14 +299,10 @@ export default function Settings() {
       </SettingsSection>
 
       {/* Appearance Section */}
-      <SettingsSection title="Appearance" icon="color-palette-outline">
-        <SettingsItem
-          label="Theme"
-          value="Auto (Focus/Break)"
-          onPress={() => {
-            Alert.alert('Coming Soon', 'Theme customization will be available soon.');
-          }}
-        />
+      <SettingsSection title="Appearance" icon="color-palette-outline" noPadding>
+        <View style={{ padding: 16 }}>
+          <ThemeSelector />
+        </View>
       </SettingsSection>
 
       {/* App Preferences Section */}
@@ -396,12 +391,22 @@ export default function Settings() {
 
       <View style={{ height: 120 }} />
       </ScrollView>
-    </LinearGradient>
+      </View>
+    </AuroraBackground>
   );
 }
 
 // Helper Components
-const SettingsSection = ({ title, icon, children }: any) => {
+const SECTION_TITLES: Record<string, string> = {
+  'cloud-outline': 'Storage',
+  'notifications-outline': 'Notifications',
+  'color-palette-outline': 'Themes',
+  'settings-outline': 'App Settings',
+  'shield-checkmark-outline': 'Privacy & Data',
+  'information-circle-outline': 'About',
+};
+
+const SettingsSection = ({ title, icon, children, noPadding }: any) => {
   const { colors } = useTheme();
 
   const getIconColor = (iconName: string) => {
@@ -415,26 +420,52 @@ const SettingsSection = ({ title, icon, children }: any) => {
   };
 
   const iconColor = getIconColor(icon);
+  const sectionLabel = SECTION_TITLES[icon] ?? title;
 
   return (
     <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <View style={{
-          width: 32,
-          height: 32,
-          borderRadius: 8,
-          backgroundColor: iconColor + '20',
-          justifyContent: 'center',
-          alignItems: 'center',
-          marginRight: 8,
-        }}>
-          <Ionicons name={icon} size={18} color={iconColor} />
+      <GlassCard style={StyleSheet.flatten([
+        styles.sectionCard,
+        noPadding && { padding: 0 },
+        !noPadding && { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 18 },
+      ])}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            marginBottom: noPadding ? 12 : 10,
+            paddingHorizontal: noPadding ? 20 : 0,
+            paddingTop: noPadding ? 16 : 0,
+            paddingBottom: noPadding ? 6 : 0,
+            gap: 12,
+          }}
+        >
+          <View
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 10,
+              backgroundColor: iconColor + '12',
+              justifyContent: 'center',
+              alignItems: 'center',
+              borderWidth: 1,
+              borderColor: iconColor + '2A',
+            }}
+          >
+            <Ionicons name={icon} size={18} color={iconColor} />
+          </View>
+          <Text
+            style={[
+              styles.sectionTitle,
+              {
+                color: colors.text,
+                letterSpacing: 0.4,
+              },
+            ]}
+          >
+            {sectionLabel}
+          </Text>
         </View>
-        <Text style={[styles.sectionTitle, { color: '#F1F5F9' }]}>
-          {title}
-        </Text>
-      </View>
-      <GlassCard style={styles.sectionCard}>
         {children}
       </GlassCard>
     </View>
@@ -535,6 +566,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1,
     textTransform: 'uppercase',
+    lineHeight: 16,
   },
   sectionCard: {
     padding: 0,
@@ -549,7 +581,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 16,
+    paddingVertical: 14,
     paddingHorizontal: 18,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(148, 163, 184, 0.15)',

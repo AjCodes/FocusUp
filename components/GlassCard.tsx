@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, ViewStyle, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from './ThemeProvider';
 
 interface GlassCardProps {
@@ -10,73 +9,55 @@ interface GlassCardProps {
   margin?: number;
 }
 
-const BORDER_RADIUS = 22;
+const BORDER_RADIUS = 16;
 
-export const GlassCard: React.FC<GlassCardProps> = ({ 
-  children, 
-  style, 
-  padding = 16, 
-  margin = 8 
+export const GlassCard: React.FC<GlassCardProps> = ({
+  children,
+  style,
+  padding = 16,
+  margin = 8
 }) => {
-  const { colors } = useTheme();
+  const { colors, currentTheme } = useTheme();
 
-  const wrapperStyle: ViewStyle = {
+  // Determine appropriate shadow and elevation based on theme
+  const shadowConfig = currentTheme === 'solarDawn'
+    ? {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+        elevation: 2,
+      }
+    : {
+        shadowColor: colors.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        elevation: 4,
+      };
+
+  const cardStyle: ViewStyle = {
     margin,
     borderRadius: BORDER_RADIUS,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.22,
-    shadowRadius: 36,
-    elevation: 16,
+    padding,
+    backgroundColor: colors.cardBackground,
+    borderWidth: 1,
+    borderColor: currentTheme === 'solarDawn'
+      ? 'rgba(0, 0, 0, 0.08)'
+      : `${colors.primary}25`,
+    ...shadowConfig,
   };
 
   return (
-    <View style={[styles.shadowWrapper, wrapperStyle, style]}>
-      <LinearGradient
-        pointerEvents="none"
-        colors={[
-          `${colors.background}55`,
-          `${colors.cardBackground}`,
-          `${colors.primary}25`,
-        ]}
-        locations={[0, 0.55, 1]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[StyleSheet.absoluteFillObject, { borderRadius: BORDER_RADIUS }]}
-      />
-      <View
-        style={[
-          styles.surface,
-          {
-            borderRadius: BORDER_RADIUS,
-            padding,
-            backgroundColor: `${colors.cardBackground}`,
-            borderColor: `${colors.primary}33`,
-          },
-        ]}
-      >
-        <LinearGradient
-          pointerEvents="none"
-          colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0)']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0.8, y: 1 }}
-          style={[StyleSheet.absoluteFillObject, { borderRadius: BORDER_RADIUS }]}
-        />
-        {children}
-      </View>
+    <View style={[styles.card, cardStyle, style]}>
+      {children}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  shadowWrapper: {
+  card: {
     position: 'relative',
     overflow: 'hidden',
-    backgroundColor: 'transparent',
-  },
-  surface: {
-    position: 'relative',
-    overflow: 'hidden',
-    borderWidth: 1,
   },
 });
