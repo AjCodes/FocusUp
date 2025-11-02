@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, Modal, ScrollView, StyleSheet } from 'react-native';
 import { useTheme } from './ThemeProvider';
 import { GlassCard } from './GlassCard';
@@ -9,10 +9,10 @@ import { useAuth } from '../src/features/auth/useAuth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const FOCUS_ATTRIBUTES = {
-  PH: { label: 'Physical', emoji: '💪', color: '#10B981' },
-  CO: { label: 'Cognitive', emoji: '🧠', color: '#3B82F6' },
-  EM: { label: 'Heart', emoji: '❤️', color: '#EF4444' },
-  SO: { label: 'Soul', emoji: '🌌', color: '#8B5CF6' },
+  PH: { label: 'Physical', emoji: '??', color: '#10B981' },
+  CO: { label: 'Cognitive', emoji: '??', color: '#3B82F6' },
+  EM: { label: 'Heart', emoji: '??', color: '#EF4444' },
+  SO: { label: 'Soul', emoji: '??', color: '#8B5CF6' },
 };
 
 interface FocusSelectModalProps {
@@ -35,11 +35,10 @@ export const FocusSelectModal: React.FC<FocusSelectModalProps> = ({
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [selectedHabitIds, setSelectedHabitIds] = useState<Set<string>>(new Set());
 
-  // Refresh data when modal opens
   useEffect(() => {
     if (visible) {
       const loadData = async () => {
-        const userId = session?.user?.id ?? await AsyncStorage.getItem('focusup-user-id') ?? '';
+        const userId = session?.user?.id ?? (await AsyncStorage.getItem('focusup-user-id')) ?? '';
         if (userId) {
           await refreshAll(userId);
         }
@@ -48,17 +47,12 @@ export const FocusSelectModal: React.FC<FocusSelectModalProps> = ({
     }
   }, [visible]);
 
-  // Filter incomplete tasks
   const incompleteTasks = tasks.filter(task => !task.done);
 
   const handleTaskToggle = (taskId: string) => {
     setSelectedTaskIds(prev => {
       const next = new Set(prev);
-      if (next.has(taskId)) {
-        next.delete(taskId);
-      } else {
-        next.add(taskId);
-      }
+      next.has(taskId) ? next.delete(taskId) : next.add(taskId);
       return next;
     });
   };
@@ -66,11 +60,7 @@ export const FocusSelectModal: React.FC<FocusSelectModalProps> = ({
   const handleHabitToggle = (habitId: string) => {
     setSelectedHabitIds(prev => {
       const next = new Set(prev);
-      if (next.has(habitId)) {
-        next.delete(habitId);
-      } else {
-        next.add(habitId);
-      }
+      next.has(habitId) ? next.delete(habitId) : next.add(habitId);
       return next;
     });
   };
@@ -93,40 +83,36 @@ export const FocusSelectModal: React.FC<FocusSelectModalProps> = ({
   return (
     <Modal
       visible={visible}
-      transparent={true}
-      animationType="slide"
+      transparent
+      animationType="fade"
+      statusBarTranslucent
       onRequestClose={handleClose}
     >
-      <Pressable
-        style={styles.overlay}
-        onPress={handleClose}
-      >
-        <Pressable onPress={(e) => e.stopPropagation()} style={{ maxHeight: '85%', width: '100%' }}>
-          <GlassCard style={styles.modalCard}>
-            <Text style={[styles.title, { color: colors.text }]}>
-              Select Tasks & Habits
-            </Text>
+      <Pressable style={styles.overlay} onPress={handleClose}>
+        <Pressable onPress={e => e.stopPropagation()} style={styles.cardWrapper}>
+          <GlassCard style={[styles.modalCard, { backgroundColor: colors.cardBackground }]}> 
+            <Text style={[styles.title, { color: colors.text }]}>Select Tasks & Habits</Text>
 
-            {/* Tab Switcher */}
             <View style={styles.tabContainer}>
               <Pressable
                 onPress={() => setActiveTab('tasks')}
                 style={[
                   styles.tab,
-                  activeTab === 'tasks' && { backgroundColor: colors.primary }
+                  {
+                    backgroundColor: activeTab === 'tasks' ? colors.primary : colors.cardBackground,
+                    borderColor: colors.primary + '40',
+                  },
                 ]}
               >
                 <Text style={[
                   styles.tabText,
-                  { color: activeTab === 'tasks' ? colors.background : colors.textSecondary }
+                  { color: activeTab === 'tasks' ? colors.background : colors.text },
                 ]}>
                   Tasks
                 </Text>
-                {activeTab === 'tasks' && selectedTaskIds.size > 0 && (
-                  <View style={[styles.badge, { backgroundColor: colors.background }]}>
-                    <Text style={[styles.badgeText, { color: colors.primary }]}>
-                      {selectedTaskIds.size}
-                    </Text>
+                {selectedTaskIds.size > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={{ color: colors.background, fontSize: 12 }}>{selectedTaskIds.size}</Text>
                   </View>
                 )}
               </Pressable>
@@ -134,45 +120,36 @@ export const FocusSelectModal: React.FC<FocusSelectModalProps> = ({
                 onPress={() => setActiveTab('habits')}
                 style={[
                   styles.tab,
-                  activeTab === 'habits' && { backgroundColor: colors.primary }
+                  {
+                    backgroundColor: activeTab === 'habits' ? colors.primary : colors.cardBackground,
+                    borderColor: colors.primary + '40',
+                  },
                 ]}
               >
                 <Text style={[
                   styles.tabText,
-                  { color: activeTab === 'habits' ? colors.background : colors.textSecondary }
+                  { color: activeTab === 'habits' ? colors.background : colors.text },
                 ]}>
                   Habits
                 </Text>
-                {activeTab === 'habits' && selectedHabitIds.size > 0 && (
-                  <View style={[styles.badge, { backgroundColor: colors.background }]}>
-                    <Text style={[styles.badgeText, { color: colors.primary }]}>
-                      {selectedHabitIds.size}
-                    </Text>
+                {selectedHabitIds.size > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={{ color: colors.background, fontSize: 12 }}>{selectedHabitIds.size}</Text>
                   </View>
                 )}
               </Pressable>
             </View>
 
-            {/* Tasks Tab */}
-            {activeTab === 'tasks' && (
-              <View style={styles.content}>
-                {incompleteTasks.length === 0 ? (
+            <View style={styles.content}>
+              {activeTab === 'tasks' ? (
+                incompleteTasks.length === 0 ? (
                   <View style={styles.emptyState}>
-                    <Ionicons name="clipboard-outline" size={48} color={colors.textSecondary} />
-                    <Text style={{ color: colors.textSecondary, marginTop: 12, textAlign: 'center' }}>
-                      No tasks available
-                    </Text>
-                    <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4, textAlign: 'center' }}>
-                      Create tasks first to add to your session
-                    </Text>
+                    <Ionicons name="list-outline" size={42} color={colors.textSecondary} />
+                    <Text style={{ color: colors.textSecondary, marginTop: 12 }}>No tasks ready.</Text>
                   </View>
                 ) : (
-                  <ScrollView
-                    style={styles.list}
-                    showsVerticalScrollIndicator={false}
-                    contentContainerStyle={{ paddingBottom: 8 }}
-                  >
-                    {incompleteTasks.map((task) => {
+                  <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
+                    {incompleteTasks.map(task => {
                       const isSelected = selectedTaskIds.has(task.id);
                       return (
                         <Pressable
@@ -181,128 +158,88 @@ export const FocusSelectModal: React.FC<FocusSelectModalProps> = ({
                           style={[
                             styles.item,
                             {
-                              backgroundColor: isSelected
-                                ? colors.primary + '30'
-                                : colors.cardBackground,
-                              borderColor: isSelected ? colors.primary : colors.primary + '40',
-                            }
+                              backgroundColor: isSelected ? colors.primary + '30' : colors.cardBackground,
+                              borderColor: isSelected ? colors.primary : colors.cardBackground,
+                            },
                           ]}
                         >
-                          <View style={styles.itemContent}>
-                            <View style={[
-                              styles.checkbox,
-                              {
-                                backgroundColor: isSelected ? colors.primary : 'transparent',
-                                borderColor: colors.primary,
-                              }
-                            ]}>
-                              {isSelected && (
-                                <Ionicons name="checkmark" size={16} color={colors.background} />
-                              )}
-                            </View>
-                            <Text style={[styles.itemText, { color: colors.text, flex: 1 }]}>
-                              {task.title}
-                            </Text>
-                          </View>
+                          <Ionicons
+                            name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+                            size={22}
+                            color={isSelected ? colors.primary : colors.textSecondary}
+                            style={{ marginRight: 12 }}
+                          />
+                          <Text style={{ color: colors.text, fontSize: 16, flex: 1 }}>{task.title}</Text>
                         </Pressable>
                       );
                     })}
                   </ScrollView>
-                )}
-              </View>
-            )}
+                )
+              ) : habits.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="fitness-outline" size={42} color={colors.textSecondary} />
+                  <Text style={{ color: colors.textSecondary, marginTop: 12 }}>No habits saved yet.</Text>
+                </View>
+              ) : (
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
+                  {habits.map(habit => {
+                    const isSelected = selectedHabitIds.has(habit.id);
+                    const attr = FOCUS_ATTRIBUTES[habit.focus_attribute as keyof typeof FOCUS_ATTRIBUTES];
+                    return (
+                      <Pressable
+                        key={habit.id}
+                        onPress={() => handleHabitToggle(habit.id)}
+                        style={[
+                          styles.item,
+                          {
+                            backgroundColor: isSelected ? colors.primary + '30' : colors.cardBackground,
+                            borderColor: isSelected ? colors.primary : colors.cardBackground,
+                          },
+                        ]}
+                      >
+                        <View style={{ marginRight: 12, flexDirection: 'row', alignItems: 'center' }}>
+                          <Ionicons
+                            name={isSelected ? 'checkbox' : 'square-outline'}
+                            size={22}
+                            color={isSelected ? colors.primary : colors.textSecondary}
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>{habit.title}</Text>
+                          {habit.cue ? (
+                            <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>{habit.cue}</Text>
+                          ) : null}
+                        </View>
+                        <View style={{ backgroundColor: attr.color + '20', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 }}>
+                          <Text style={{ color: attr.color, fontSize: 12 }}>{attr.emoji}</Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              )}
+            </View>
 
-            {/* Habits Tab */}
-            {activeTab === 'habits' && (
-              <View style={styles.content}>
-                {habits.length === 0 ? (
-                  <View style={styles.emptyState}>
-                    <Ionicons name="fitness-outline" size={48} color={colors.textSecondary} />
-                    <Text style={{ color: colors.textSecondary, marginTop: 12, textAlign: 'center' }}>
-                      No habits available
-                    </Text>
-                    <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4, textAlign: 'center' }}>
-                      Create a habit first to add to your session
-                    </Text>
-                  </View>
-                ) : (
-                  <ScrollView
-                    style={styles.list}
-                    showsVerticalScrollIndicator={false}
-                    contentContainerStyle={{ paddingBottom: 8 }}
-                  >
-                    {habits.map((habit) => {
-                      const isSelected = selectedHabitIds.has(habit.id);
-                      const attr = FOCUS_ATTRIBUTES[habit.focus_attribute];
-                      return (
-                        <Pressable
-                          key={habit.id}
-                          onPress={() => handleHabitToggle(habit.id)}
-                          style={[
-                            styles.item,
-                            {
-                              backgroundColor: isSelected
-                                ? colors.primary + '30'
-                                : colors.cardBackground,
-                              borderColor: isSelected ? colors.primary : colors.primary + '40',
-                            }
-                          ]}
-                        >
-                          <View style={styles.itemContent}>
-                            <View style={[
-                              styles.checkbox,
-                              {
-                                backgroundColor: isSelected ? colors.primary : 'transparent',
-                                borderColor: colors.primary,
-                              }
-                            ]}>
-                              {isSelected && (
-                                <Ionicons name="checkmark" size={16} color={colors.background} />
-                              )}
-                            </View>
-                            <View style={{ flex: 1, marginLeft: 12 }}>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                <Text style={[styles.itemText, { color: colors.text }]}>
-                                  {habit.title}
-                                </Text>
-                                <Text style={{ fontSize: 14 }}>{attr.emoji}</Text>
-                              </View>
-                              {habit.cue && (
-                                <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>
-                                  {habit.cue}
-                                </Text>
-                              )}
-                            </View>
-                          </View>
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
-                )}
-              </View>
-            )}
-
-            {/* Footer */}
             <View style={styles.footer}>
+              <Pressable
+                onPress={handleClose}
+                style={[styles.footerButton, { backgroundColor: colors.cardBackground, borderColor: colors.primary + '40' }]}
+              >
+                <Text style={{ color: colors.text, fontWeight: '600' }}>Cancel</Text>
+              </Pressable>
               <Pressable
                 onPress={handleConfirm}
                 disabled={totalSelected === 0}
                 style={[
-                  styles.confirmButton,
+                  styles.footerButton,
                   {
                     backgroundColor: totalSelected === 0 ? colors.cardBackground : colors.primary,
                     opacity: totalSelected === 0 ? 0.5 : 1,
-                    borderColor: totalSelected === 0 ? colors.primary + '40' : colors.primary,
-                    shadowColor: colors.primary,
-                  }
+                  },
                 ]}
               >
-                <Text style={{
-                  color: totalSelected === 0 ? colors.textSecondary : colors.background,
-                  fontWeight: '700',
-                  fontSize: 16,
-                }}>
-                  {totalSelected === 0 ? 'Select items to continue' : `Confirm (${totalSelected} selected)`}
+                <Text style={{ color: totalSelected === 0 ? colors.textSecondary : colors.background, fontWeight: '700' }}>
+                  Confirm ({totalSelected})
                 </Text>
               </Pressable>
             </View>
@@ -316,39 +253,40 @@ export const FocusSelectModal: React.FC<FocusSelectModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(4,6,20,0.72)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 16,
+    padding: 20,
+  },
+  cardWrapper: {
+    width: '100%',
+    maxWidth: 420,
   },
   modalCard: {
     width: '100%',
-    maxWidth: '95%',
-    minWidth: 320,
-    flex: 1,
   },
   title: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 16,
     textAlign: 'center',
   },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(30, 41, 59, 0.5)',
-    borderRadius: 8,
+    borderRadius: 12,
     padding: 4,
-    marginBottom: 10,
+    backgroundColor: 'rgba(148, 163, 184, 0.12)',
+    marginBottom: 16,
   },
   tab: {
     flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 6,
+    borderWidth: 1,
   },
   tabText: {
     fontSize: 14,
@@ -358,71 +296,42 @@ const styles = StyleSheet.create({
     minWidth: 20,
     height: 20,
     borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 6,
-  },
-  badgeText: {
-    fontSize: 11,
-    fontWeight: 'bold',
+    marginLeft: 8,
   },
   content: {
-    flex: 1,
-    minHeight: 150,
+    maxHeight: 380,
+    borderRadius: 16,
+    overflow: 'hidden',
   },
   emptyState: {
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 40,
-  },
-  list: {
-    flex: 1,
+    justifyContent: 'center',
+    paddingVertical: 60,
+    gap: 12,
   },
   item: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
-    borderRadius: 10,
-    marginBottom: 6,
-    borderWidth: 1.5,
-  },
-  itemContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  itemText: {
-    fontSize: 15,
-    fontWeight: '500',
-    flexShrink: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 10,
+    borderRadius: 14,
+    borderWidth: 1,
   },
   footer: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.12)',
+    gap: 12,
+    marginTop: 18,
   },
-  confirmButton: {
-    minWidth: '70%',
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 18,
-    borderWidth: 1.5,
+  footerButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
     alignItems: 'center',
-    justifyContent: 'center',
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 10,
+    borderWidth: 1,
   },
 });

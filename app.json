@@ -1,10 +1,11 @@
 {
   "expo": {
-    "name": "focusup54",
-    "slug": "focusup54",
+    "name": "focusup",
+    "slug": "focusup",
+    "owner": "ajcodes",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "scheme": "focusup",
@@ -15,14 +16,14 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.focusup54.app"
+      "bundleIdentifier": "com.focusup.app"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.focusup54.app",
+      "package": "com.focusup.app",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
@@ -31,6 +32,12 @@
     },
     "plugins": [
       "expo-router"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "24d02c35-2bb7-48e5-8063-dfb6d8f452cd"
+      }
+    }
   }
 }
