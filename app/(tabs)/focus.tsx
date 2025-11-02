@@ -7,9 +7,9 @@ import { useTheme } from "../../components/ThemeProvider";
 import { GlassCard } from "../../components/GlassCard";
 import { TopBar } from "../../components/TopBar";
 import { FocusSelectModal } from "../../components/FocusSelectModal";
-import { EndSessionModal } from "../../components/EndSessionModal";
 import { TimerSettingsModal } from "../../components/TimerSettingsModal";
 import { Toast } from "../../components/Toast";
+import { WellDoneModal } from "../../components/WellDoneModal";
 import { useAppData } from "../../store/appData";
 import { useUserStats } from "../../hooks/useUserStats";
 import { supabase } from "../../lib/supabase";
@@ -67,7 +67,6 @@ export default function Focus() {
   const [workDuration, setWorkDuration] = useState(DEFAULT_WORK);
   const [breakDuration, setBreakDuration] = useState(DEFAULT_BREAK);
   const [showSelectModal, setShowSelectModal] = useState(false);
-  const [showEndSessionModal, setShowEndSessionModal] = useState(false);
   const [showTimerSettings, setShowTimerSettings] = useState(false);
   const [sprintCount, setSprintCount] = useState(0);
   const [dailySprintDate, setDailySprintDate] = useState('');
@@ -83,6 +82,7 @@ export default function Focus() {
   const refreshAll = useAppData(state => state.refreshAll);
   const startSession = useAppData(state => state.startSession);
   const attachToSession = useAppData(state => state.attachToSession);
+  const completeSession = useAppData(state => state.completeSession);
   const getSessionTasks = useAppData(state => state.getSessionTasks);
   const getSessionHabits = useAppData(state => state.getSessionHabits);
   const [recentSessions, setRecentSessions] = useState<FocusSession[]>([]);
@@ -106,6 +106,17 @@ export default function Focus() {
     taskIds: string[];
     habitIds: string[];
   } | null>(null);
+
+  // Well Done modal state
+  const [showWellDone, setShowWellDone] = useState(false);
+  const [wellDoneRewards, setWellDoneRewards] = useState<{
+    coins: number;
+    xp: Record<HabitFocusKey, number>;
+    messages: string[];
+    tasksCompleted: number;
+    habitsCompleted: number;
+  } | null>(null);
+  const [sessionCompleted, setSessionCompleted] = useState(false);
 
   const showToast = (
     message: string,
@@ -139,24 +150,44 @@ export default function Focus() {
   }, [sessionTasks, sessionHabits, tasks, habits]);
 
 
+  const loadRecentSessions = async () => {
+    const userId = session?.user?.id ?? await getUserId();
+
+    if (supabase && session?.user?.id) {
+      const { data: sessionsData } = await supabase
+        .from('focus_sessions')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .order('completed_at', { ascending: false })
+        .limit(5);
+      if (sessionsData) {
+        console.log('📊 Loaded recent sessions:', sessionsData.map(s => ({
+          time: s.completed_at,
+          coins: s.coins_earned,
+        })));
+        setRecentSessions(sessionsData as FocusSession[]);
+      }
+    } else {
+      // For guest users, load from local storage
+      try {
+        const stored = await AsyncStorage.getItem(`recent-sessions-${userId}`);
+        if (stored) {
+          const sessions = JSON.parse(stored);
+          setRecentSessions(sessions);
+        }
+      } catch (error) {
+        console.error('Error loading recent sessions:', error);
+      }
+    }
+  };
+
   useEffect(() => {
     const initData = async () => {
       const userId = session?.user?.id ?? await getUserId();
       await refreshAll(userId);
       loadSettings();
       loadDailySprintCount();
-      // Load recent sessions
-      if (supabase && session?.user?.id) {
-        const { data: sessionsData } = await supabase
-          .from('focus_sessions')
-          .select('*')
-          .eq('user_id', session.user.id)
-          .order('completed_at', { ascending: false })
-          .limit(5);
-        if (sessionsData) {
-          setRecentSessions(sessionsData as FocusSession[]);
-        }
-      }
+      await loadRecentSessions();
     };
     initData();
   }, [session?.user?.id]);
@@ -304,35 +335,162 @@ export default function Focus() {
   }, [pomodoro.phase]);
 
   useEffect(() => {
-    if (pomodoro.phase === 'focus' && pomodoro.sprint.workCompletedAt && !pomodoro.running) {
-      // Get or create session ID
-      const userId = session?.user?.id ?? '';
-      if (!userId) return;
-      
-      // If pomodoro created a session, use it; otherwise create one
-      let sessionId = pomodoro.sprint.id;
-      if (!sessionId) {
-        // Create session retroactively
-        (async () => {
-          const newSessionId = await startSession({
+    if (pomodoro.phase === 'focus' && pomodoro.sprint.workCompletedAt && !pomodoro.running && !sessionCompleted) {
+      // Timer has ended - automatically complete the session and show Well Done modal
+      (async () => {
+        const userId = session?.user?.id ?? await getUserId();
+        if (!userId) return;
+
+        console.log('🎯 Focus session completed - starting auto-completion...');
+
+        // Get or create session ID
+        let sessionId = pomodoro.sprint.id;
+        if (!sessionId) {
+          // Create session retroactively
+          sessionId = await startSession({
             mode: 'work',
             duration: workDuration,
             userId,
           });
-          if (newSessionId) {
-            setCurrentSessionId(newSessionId);
-            getSessionTasks(newSessionId, userId);
-            getSessionHabits(newSessionId, userId);
-            setShowEndSessionModal(true);
+          if (!sessionId) return;
+        }
+
+        setCurrentSessionId(sessionId);
+
+        // Load session items
+        const [tasksInSession, habitsInSession] = await Promise.all([
+          getSessionTasks(sessionId, userId),
+          getSessionHabits(sessionId, userId),
+        ]);
+
+        // Automatically complete the session with all tasks/habits that were in the session
+        const taskIdsInSession = tasksInSession.map(st => st.task_id);
+        const habitIdsInSession = habitsInSession.map(sh => sh.habit_id);
+
+        console.log('🎯 Session items loaded:', {
+          tasksInSession: tasksInSession.length,
+          habitIdsInSession: habitIdsInSession.length,
+          taskIds: taskIdsInSession,
+          habitIds: habitIdsInSession,
+        });
+
+        const isUuid = /^[0-9a-fA-F-]{36}$/.test(userId);
+
+        try {
+          let totalCoins = 0;
+          const xpGains: Record<HabitFocusKey, number> = { PH: 0, CO: 0, EM: 0, SO: 0 };
+
+          // For authenticated users, use the full completeSession flow
+          if (supabase && isUuid) {
+            const result = await completeSession({
+              sessionId,
+              doneTaskIds: taskIdsInSession,
+              performedHabitIds: habitIdsInSession,
+              userId,
+              duration: workDuration,
+            });
+
+            totalCoins = result.coins;
+            Object.assign(xpGains, result.xp);
+          } else {
+            // For guest users, calculate rewards manually
+            console.log('💰 Calculating rewards for guest user...');
+            console.log('📊 Tasks in session:', taskIdsInSession.length);
+            console.log('📊 Habits in session:', habitIdsInSession.length);
+
+            // Base sprint reward
+            const sprintCoins = 10;
+            totalCoins += sprintCoins;
+            console.log(`🏃 Sprint reward: ${sprintCoins} coins`);
+
+            // Task rewards (5 coins each)
+            const taskCoins = taskIdsInSession.length * 5;
+            totalCoins += taskCoins;
+            console.log(`✅ Task rewards: ${taskCoins} coins (${taskIdsInSession.length} × 5)`);
+
+            // Habit XP (10 XP each to their respective attribute)
+            for (const habitId of habitIdsInSession) {
+              const habit = habits.find(h => h.id === habitId);
+              if (habit) {
+                const attr = habit.focus_attribute as HabitFocusKey;
+                xpGains[attr] += 10;
+                console.log(`💪 Habit XP: +10 to ${attr} (${habit.title})`);
+              }
+            }
+
+            console.log(`💰 Total coins: ${totalCoins}`);
+            console.log(`⚡ Total XP:`, xpGains);
+
+            // Update local stats for guest users
+            await addCoins(totalCoins);
+            for (const [attr, xp] of Object.entries(xpGains)) {
+              if (xp > 0) {
+                await addXP(attr as HabitFocusKey, xp);
+              }
+            }
           }
-        })();
-        return;
-      }
-      
-      setCurrentSessionId(sessionId);
-      getSessionTasks(sessionId, userId);
-      getSessionHabits(sessionId, userId);
-      setShowEndSessionModal(true);
+
+          // Add focus session time to user stats
+          await addFocusSession(workDuration);
+
+          // Increment sprints
+          await incrementSprints(1);
+
+          // Refresh all data to update dashboard
+          await refreshAll(userId);
+
+          // For guest users, store the completed session locally
+          if (!isUuid) {
+            try {
+              const stored = await AsyncStorage.getItem(`recent-sessions-${userId}`);
+              const sessions = stored ? JSON.parse(stored) : [];
+              const newSession: FocusSession = {
+                id: sessionId,
+                user_id: userId,
+                mode: 'work',
+                duration: workDuration,
+                started_at: new Date().toISOString(),
+                completed_at: new Date().toISOString(),
+                coins_earned: totalCoins,
+                linked_task_id: null,
+                linked_habit_id: null,
+              };
+              sessions.unshift(newSession);
+              // Keep only last 5
+              const recent = sessions.slice(0, 5);
+              await AsyncStorage.setItem(`recent-sessions-${userId}`, JSON.stringify(recent));
+            } catch (error) {
+              console.error('Error storing session locally:', error);
+            }
+          }
+
+          // Reload recent sessions to show the new one
+          await loadRecentSessions();
+
+          // Mark session as completed to prevent duplicate triggers
+          setSessionCompleted(true);
+
+          console.log('🎉 Showing Well Done modal with rewards:', {
+            coins: totalCoins,
+            xp: xpGains,
+            tasks: taskIdsInSession.length,
+            habits: habitIdsInSession.length,
+          });
+
+          // Trigger Well Done modal immediately
+          handleSessionComplete({
+            coins: totalCoins,
+            xp: xpGains,
+            messages: [],
+            tasksCompleted: taskIdsInSession.length,
+            habitsCompleted: habitIdsInSession.length,
+          });
+        } catch (error) {
+          console.error('Error auto-completing session:', error);
+          // Show error toast if auto-complete fails
+          showToast('Failed to complete session', 'error');
+        }
+      })();
     }
   }, [pomodoro.phase, pomodoro.sprint.workCompletedAt, pomodoro.running]);
 
@@ -358,19 +516,24 @@ export default function Focus() {
   const handleStart = async () => {
     const userId = session?.user?.id ?? await getUserId();
     if (!running) {
+      // Reset session completion flag when starting a new session
+      if (mode === 'focus') {
+        setSessionCompleted(false);
+      }
+
       // Ensure durations are set correctly
       pomodoro.setDurations(workDuration, breakDuration);
-      
+
       // CRITICAL: Ensure pomodoro phase matches the component mode before starting
       if (pomodoro.phase !== mode) {
         pomodoro.setPhase(mode);
       }
-      
+
       // If in break mode, ensure break duration is used
       if (mode === 'break') {
         setSeconds(breakDuration);
       }
-      
+
       pomodoro.start(userId);
       // Start session in database after pomodoro starts (it will create its own session)
       // We'll sync it in the useEffect that watches for work completion
@@ -383,6 +546,7 @@ export default function Focus() {
     pomodoro.reset();
     setSeconds(mode === 'focus' ? workDuration : breakDuration);
     setCurrentSessionId(null);
+    setSessionCompleted(false); // Reset session completion flag
     progressAnimation.stopAnimation();
     progressAnimation.setValue(0);
   };
@@ -482,6 +646,70 @@ export default function Focus() {
     } catch (error) {
       console.error('Error undoing add:', error);
       showToast('Failed to undo', 'error');
+    }
+  };
+
+  const handleSessionComplete = (rewards: {
+    coins: number;
+    xp: Record<HabitFocusKey, number>;
+    messages: string[];
+    tasksCompleted: number;
+    habitsCompleted: number;
+  }) => {
+    console.log('🎉 Session completed with rewards:', rewards);
+    setWellDoneRewards(rewards);
+    setShowWellDone(true);
+  };
+
+  const handleRemoveFromSession = async (itemType: 'task' | 'habit', itemId: string) => {
+    if (!currentSessionId) return;
+
+    try {
+      const userId = session?.user?.id ?? await getUserId();
+      const isUuid = /^[0-9a-fA-F-]{36}$/.test(userId);
+
+      if (supabase && isUuid) {
+        // Delete from Supabase
+        if (itemType === 'task') {
+          await supabase
+            .from('focus_session_tasks')
+            .delete()
+            .eq('session_id', currentSessionId)
+            .eq('task_id', itemId);
+        } else {
+          await supabase
+            .from('focus_session_habits')
+            .delete()
+            .eq('session_id', currentSessionId)
+            .eq('habit_id', itemId);
+        }
+      } else {
+        // Delete from local storage
+        const key = itemType === 'task'
+          ? `session-tasks-${userId}-${currentSessionId}`
+          : `session-habits-${userId}-${currentSessionId}`;
+
+        const json = await AsyncStorage.getItem(key);
+        if (json) {
+          const items = JSON.parse(json);
+          const filtered = items.filter((item: any) => {
+            const id = itemType === 'task' ? item.task_id : item.habit_id;
+            return id !== itemId;
+          });
+          await AsyncStorage.setItem(key, JSON.stringify(filtered));
+        }
+      }
+
+      // Refresh session items
+      await Promise.all([
+        getSessionTasks(currentSessionId, userId),
+        getSessionHabits(currentSessionId, userId),
+      ]);
+
+      showToast(`${itemType === 'task' ? 'Task' : 'Habit'} removed from session`, 'info');
+    } catch (error) {
+      console.error('Error removing item:', error);
+      showToast('Failed to remove item', 'error');
     }
   };
 
@@ -632,6 +860,28 @@ export default function Focus() {
         type={toast.type}
         onHide={hideToast}
         action={toast.action}
+      />
+      <WellDoneModal
+        visible={showWellDone}
+        tasksCompleted={wellDoneRewards?.tasksCompleted || 0}
+        habitsCompleted={wellDoneRewards?.habitsCompleted || 0}
+        coinsEarned={wellDoneRewards?.coins || 0}
+        xpGained={wellDoneRewards?.xp || { PH: 0, CO: 0, EM: 0, SO: 0 }}
+        currentStreak={userStats.current_streak}
+        onEnterBreak={() => {
+          setShowWellDone(false);
+          // Ensure break duration and phase are set
+          pomodoro.setDurations(workDuration, breakDuration);
+          pomodoro.setPhase('break');
+          pomodoro.startBreak();
+          setMode('break');
+          setSeconds(breakDuration);
+          setCurrentSessionId(null);
+        }}
+        onClose={() => {
+          setShowWellDone(false);
+          setCurrentSessionId(null);
+        }}
       />
       <TopBar
         showStats={true}
@@ -796,11 +1046,6 @@ export default function Focus() {
                 }}>
                   Current Focus Session
                 </Text>
-                {currentSessionId && (
-                  <Text style={{ color: colors.textSecondary, fontSize: 9 }}>
-                    Session: {currentSessionId.substring(0, 8)}...
-                  </Text>
-                )}
               </View>
               <Pressable
                 onPress={() => setShowSelectModal(true)}
@@ -852,16 +1097,34 @@ export default function Focus() {
                   return (
                     <View key={st.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                       <View style={{
-                        backgroundColor: colors.primary,
-                        paddingHorizontal: 8,
-                        paddingVertical: 4,
+                        backgroundColor: colors.primary + '30',
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
                         borderRadius: 12,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        borderWidth: 1,
+                        borderColor: colors.primary + '60',
                       }}>
-                        <Text style={{ color: colors.background, fontSize: 12, fontWeight: '600' }}>
-                          📋 Task
+                        <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
+                        <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>
+                          Task
                         </Text>
                       </View>
                       <Text style={{ color: colors.text, flex: 1 }}>{task.title}</Text>
+                      <Pressable
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          handleRemoveFromSession('task', task.id);
+                        }}
+                        style={({ pressed }) => ({
+                          padding: 4,
+                          opacity: pressed ? 0.5 : 1,
+                        })}
+                      >
+                        <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+                      </Pressable>
                     </View>
                   );
                 })}
@@ -879,31 +1142,53 @@ export default function Focus() {
                       </Text>
                     );
                   }
+                  const attrColor = FOCUS_ATTRIBUTES[habit.focus_attribute]?.color || colors.primary;
+                  const attrEmoji = FOCUS_ATTRIBUTES[habit.focus_attribute]?.emoji || '🎯';
                   return (
                     <View key={sh.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                       <View style={{
-                        backgroundColor: FOCUS_ATTRIBUTES[habit.focus_attribute]?.color || colors.primary,
-                        paddingHorizontal: 8,
-                        paddingVertical: 4,
+                        backgroundColor: attrColor + '30',
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
                         borderRadius: 12,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        borderWidth: 1,
+                        borderColor: attrColor + '60',
                       }}>
-                        <Text style={{ color: colors.background, fontSize: 12, fontWeight: '600' }}>
-                          {FOCUS_ATTRIBUTES[habit.focus_attribute]?.emoji} {habit.focus_attribute}
+                        <Text style={{ fontSize: 14 }}>{attrEmoji}</Text>
+                        <Text style={{ color: attrColor, fontSize: 12, fontWeight: '600' }}>
+                          {habit.focus_attribute}
                         </Text>
                       </View>
                       <Text style={{ color: colors.text, flex: 1 }}>{habit.title}</Text>
+                      <Pressable
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          handleRemoveFromSession('habit', habit.id);
+                        }}
+                        style={({ pressed }) => ({
+                          padding: 4,
+                          opacity: pressed ? 0.5 : 1,
+                        })}
+                      >
+                        <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+                      </Pressable>
                     </View>
                   );
                 })}
               </>
             )}
-            <Text style={{ 
-              color: colors.textSecondary, 
-              fontSize: 12, 
-              marginTop: 8,
-            }}>
-              Select tasks or habits to channel your XP gains.
-            </Text>
+            {sessionTasks.length === 0 && sessionHabits.length === 0 && (
+              <Text style={{
+                color: colors.textSecondary,
+                fontSize: 12,
+                marginTop: 8,
+              }}>
+                Select tasks or habits to channel your XP gains.
+              </Text>
+            )}
           </GlassCard>
           {recentSessions.length > 0 && (
             <GlassCard>
@@ -925,13 +1210,13 @@ export default function Focus() {
                   borderBottomColor: `${colors.primary}20`,
                 }}>
                   <Text style={{ color: colors.textSecondary, fontSize: 14 }}>
-                    {new Date(session.completed_at || session.started_at).toLocaleTimeString([], { 
-                      hour: '2-digit', 
-                      minute: '2-digit' 
+                    {new Date(session.completed_at || session.started_at).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit'
                     })} {session.mode === 'work' ? 'Focus' : 'Break'} {Math.round(session.duration / 60)} min
                   </Text>
                   <Text style={{ color: colors.success, fontSize: 12 }}>
-                    +{session.coins_earned} coins
+                    +{session.coins_earned || 0} coins
                   </Text>
                 </View>
               ))}
@@ -979,23 +1264,6 @@ export default function Focus() {
           await handleSelectConfirm(taskIds, habitIds);
           console.log('✅ Processing complete, closing modal...');
           setShowSelectModal(false);
-        }}
-      />
-      <EndSessionModal
-        visible={showEndSessionModal}
-        sessionId={currentSessionId}
-        userId={session?.user?.id ?? ''}
-        duration={workDuration}
-        onClose={() => setShowEndSessionModal(false)}
-        onEnterBreak={() => {
-          setShowEndSessionModal(false);
-          // Ensure break duration and phase are set
-          pomodoro.setDurations(workDuration, breakDuration);
-          pomodoro.setPhase('break');
-          pomodoro.startBreak();
-          setMode('break');
-          setSeconds(breakDuration);
-          setCurrentSessionId(null);
         }}
       />
       <TimerSettingsModal

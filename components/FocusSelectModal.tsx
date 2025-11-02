@@ -9,10 +9,10 @@ import { useAuth } from '../src/features/auth/useAuth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const FOCUS_ATTRIBUTES = {
-  PH: { label: 'Physical', emoji: '??', color: '#10B981' },
-  CO: { label: 'Cognitive', emoji: '??', color: '#3B82F6' },
-  EM: { label: 'Heart', emoji: '??', color: '#EF4444' },
-  SO: { label: 'Soul', emoji: '??', color: '#8B5CF6' },
+  PH: { label: 'Physical', emoji: '💪', color: '#10B981' },
+  CO: { label: 'Cognitive', emoji: '🧠', color: '#3B82F6' },
+  EM: { label: 'Heart', emoji: '❤️', color: '#EF4444' },
+  SO: { label: 'Soul', emoji: '🌌', color: '#8B5CF6' },
 };
 
 interface FocusSelectModalProps {

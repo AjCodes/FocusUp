@@ -12,6 +12,7 @@ import { useAppData } from '../../store/appData';
 import { Ionicons } from '@expo/vector-icons';
 import { SwipeableRow } from '../../components/SwipeableRow';
 import { Toast } from '../../components/Toast';
+import { useFocusEffect } from '@react-navigation/native';
 
 const USER_ID_KEY = 'focusup-user-id';
 type FocusAttributeKey = 'PH' | 'CO' | 'EM' | 'SO';
@@ -317,6 +318,13 @@ export default function Habits() {
   useEffect(() => {
     loadHabits();
   }, []);
+
+  // Reload habits when tab becomes focused
+  useFocusEffect(
+    React.useCallback(() => {
+      loadHabits();
+    }, [])
+  );
 
   const renderHabit = ({ item: habit }: { item: Habit }) => {
     const streak = getHabitStreak(habit.id);

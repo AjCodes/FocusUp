@@ -120,31 +120,33 @@ export const useAppData = create<AppDataState>((set, get) => ({
         // Keep current store state if it exists, otherwise load from storage
         const currentTasks = get().tasks.filter(t => t.user_id === userId);
         const currentHabits = get().habits.filter(h => h.user_id === userId);
-        
-        // Try to load from storage as fallback if store is empty
-        if (currentTasks.length === 0 || currentHabits.length === 0) {
-          try {
-            const storedTasks = await AsyncStorage.getItem(`tasks-${userId}`);
-            const storedHabits = await AsyncStorage.getItem(`habits-${userId}`);
-            
-            const tasksFromStorage = storedTasks ? JSON.parse(storedTasks) : [];
-            const habitsFromStorage = storedHabits ? JSON.parse(storedHabits) : [];
-            
-            // Merge with current state (prefer current/optimistic updates)
-            const mergedTasks = currentTasks.length > 0 ? currentTasks : tasksFromStorage;
-            const mergedHabits = currentHabits.length > 0 ? currentHabits : habitsFromStorage;
-            
-            set({
-              tasks: mergedTasks,
-              habits: mergedHabits,
-              loading: false,
-            });
-          } catch (storageError) {
-            // If storage fails, at least keep current state
-            set({ loading: false });
-          }
-        } else {
-          // Store already has data, just mark as loaded
+
+        try {
+          const storedTasks = await AsyncStorage.getItem(`tasks-${userId}`);
+          const storedHabits = await AsyncStorage.getItem(`habits-${userId}`);
+
+          const tasksFromStorage = storedTasks ? JSON.parse(storedTasks) : [];
+          const habitsFromStorage = storedHabits ? JSON.parse(storedHabits) : [];
+
+          console.log('📦 Loaded from storage:', {
+            tasksFromStorage: tasksFromStorage.length,
+            habitsFromStorage: habitsFromStorage.length,
+            currentTasks: currentTasks.length,
+            currentHabits: currentHabits.length,
+          });
+
+          // Merge with current state (prefer current/optimistic updates)
+          const mergedTasks = currentTasks.length > 0 ? currentTasks : tasksFromStorage;
+          const mergedHabits = currentHabits.length > 0 ? currentHabits : habitsFromStorage;
+
+          set({
+            tasks: mergedTasks,
+            habits: mergedHabits,
+            loading: false,
+          });
+        } catch (storageError) {
+          console.error('Error loading from storage:', storageError);
+          // If storage fails, at least keep current state
           set({ loading: false });
         }
       }
@@ -548,6 +550,7 @@ export const useAppData = create<AppDataState>((set, get) => ({
       }
 
       // 4. Update focus_sessions
+      console.log(`💾 Updating session ${sessionId} with ${totalCoins} coins`);
       const { error: sessionError } = await supabase
         .from('focus_sessions')
         .update({
@@ -557,7 +560,11 @@ export const useAppData = create<AppDataState>((set, get) => ({
         .eq('id', sessionId)
         .eq('user_id', userId);
 
-      if (sessionError) throw sessionError;
+      if (sessionError) {
+        console.error('❌ Error updating session:', sessionError);
+        throw sessionError;
+      }
+      console.log('✅ Session updated successfully');
 
       // 5. Update user_stats
       const { data: currentStats, error: statsError } = await supabase
@@ -839,7 +846,29 @@ export const useAppData = create<AppDataState>((set, get) => ({
           created_at: new Date().toISOString(),
           user_id: userId,
         };
-        set(state => ({ habits: [newHabit, ...state.habits] }));
+
+        console.log('✨ Creating new habit:', { id: newHabit.id, title: newHabit.title });
+
+        // Check for duplicates
+        const existingHabit = get().habits.find(h => h.title === newHabit.title && h.focus_attribute === newHabit.focus_attribute);
+        if (existingHabit) {
+          console.warn('⚠️ Habit with same title already exists:', existingHabit.id);
+        }
+
+        // Add to store
+        set(state => ({
+          habits: [newHabit, ...state.habits]
+        }));
+
+        // Save to AsyncStorage
+        try {
+          const allHabits = get().habits;
+          await AsyncStorage.setItem(`habits-${userId}`, JSON.stringify(allHabits));
+          console.log('💾 Saved habit to AsyncStorage. Total habits:', allHabits.length);
+        } catch (storageError) {
+          console.error('Failed to save habit to AsyncStorage:', storageError);
+        }
+
         return newHabit;
       }
 
@@ -921,15 +950,27 @@ export const useAppData = create<AppDataState>((set, get) => ({
 
   deleteHabit: async (habitId: string, userId: string) => {
     try {
+      const currentHabits = get().habits;
+      console.log('📋 Current habits before delete:', currentHabits.map(h => ({ id: h.id, title: h.title })));
+
       const optimisticHabit = get().habits.find(h => h.id === habitId);
-      if (!optimisticHabit) throw new Error('Habit not found');
+      if (!optimisticHabit) {
+        console.error('❌ Habit not found:', habitId);
+        throw new Error('Habit not found');
+      }
+
+      console.log('🗑️ Deleting habit:', habitId, optimisticHabit.title);
 
       // Optimistic delete
-      set(state => ({
-        habits: state.habits.filter(h => h.id !== habitId),
-      }));
+      set(state => {
+        const filtered = state.habits.filter(h => h.id !== habitId);
+        console.log('📋 Habits after filter:', filtered.map(h => ({ id: h.id, title: h.title })));
+        return { habits: filtered };
+      });
 
-      if (supabase && userId) {
+      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i.test(habitId);
+
+      if (supabase && userId && isUuid) {
         const { error } = await supabase
           .from('habits')
           .delete()
@@ -942,6 +983,15 @@ export const useAppData = create<AppDataState>((set, get) => ({
             set(state => ({ habits: [optimisticHabit, ...state.habits] }));
           }
           throw error;
+        }
+      } else {
+        // Guest mode - update AsyncStorage
+        try {
+          const allHabits = get().habits;
+          await AsyncStorage.setItem(`habits-${userId}`, JSON.stringify(allHabits));
+          console.log('💾 Updated AsyncStorage after delete');
+        } catch (storageError) {
+          console.error('Failed to update AsyncStorage:', storageError);
         }
       }
     } catch (error: any) {

@@ -2,7 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, Pressable, Modal, ScrollView, StyleSheet, Animated, ActivityIndicator } from 'react-native';
 import { useTheme } from './ThemeProvider';
 import { GlassCard } from './GlassCard';
+import { WellDoneModal } from './WellDoneModal';
 import { useAppData } from '../store/appData';
+import { useUserStats } from '../hooks/useUserStats';
 import type { Task, Habit, FocusSessionTask, FocusSessionHabit } from '../types/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import type { AttributeKey } from '../src/features/rewards/types';
@@ -29,6 +31,13 @@ interface EndSessionModalProps {
   duration: number;
   onClose: () => void;
   onEnterBreak: () => void;
+  onSessionComplete?: (rewards: {
+    coins: number;
+    xp: Record<AttributeKey, number>;
+    messages: string[];
+    tasksCompleted: number;
+    habitsCompleted: number;
+  }) => void;
 }
 
 export const EndSessionModal: React.FC<EndSessionModalProps> = ({
@@ -38,18 +47,21 @@ export const EndSessionModal: React.FC<EndSessionModalProps> = ({
   duration,
   onClose,
   onEnterBreak,
+  onSessionComplete,
 }) => {
   const { colors } = useTheme();
+  const { userStats, refetch: refetchStats } = useUserStats();
   const tasks = useAppData(state => state.tasks);
   const habits = useAppData(state => state.habits);
   const sessionTasks = useAppData(state => state.sessionTasks);
   const sessionHabits = useAppData(state => state.sessionHabits);
   const completeSession = useAppData(state => state.completeSession);
-  
+
   const [doneTaskIds, setDoneTaskIds] = useState<Set<string>>(new Set());
   const [performedHabitIds, setPerformedHabitIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [completed, setCompleted] = useState(false);
+  const [showWellDone, setShowWellDone] = useState(false);
   const [rewards, setRewards] = useState<{
     coins: number;
     xp: Record<AttributeKey, number>;
@@ -94,9 +106,10 @@ export const EndSessionModal: React.FC<EndSessionModalProps> = ({
 
   const handleConfirm = async () => {
     if (!sessionId) return;
-    
+
     setLoading(true);
     try {
+      // Complete session in database FIRST
       const result = await completeSession({
         sessionId,
         doneTaskIds: Array.from(doneTaskIds),
@@ -105,17 +118,23 @@ export const EndSessionModal: React.FC<EndSessionModalProps> = ({
         duration,
       });
 
+      // Refetch user stats from database to ensure sync
+      await refetchStats();
+
       setRewards(result);
       setCompleted(true);
 
-      // Animate counters
-      Animated.parallel([
-        animateValue(coinsAnim, result.coins),
-        animateValue(xpAnims.PH, result.xp.PH),
-        animateValue(xpAnims.CO, result.xp.CO),
-        animateValue(xpAnims.EM, result.xp.EM),
-        animateValue(xpAnims.SO, result.xp.SO),
-      ]).start();
+      // Call parent callback with rewards data
+      if (onSessionComplete) {
+        onSessionComplete({
+          ...result,
+          tasksCompleted: doneTaskIds.size,
+          habitsCompleted: performedHabitIds.size,
+        });
+      }
+
+      // Close this modal (parent will show Well Done modal)
+      onClose();
     } catch (error: any) {
       console.error('Error completing session:', error);
       // Handle error - maybe show error message
@@ -153,10 +172,18 @@ export const EndSessionModal: React.FC<EndSessionModalProps> = ({
     setPerformedHabitIds(new Set());
     setCompleted(false);
     setRewards(null);
+    setShowWellDone(false);
     coinsAnim.setValue(0);
     Object.values(xpAnims).forEach(anim => anim.setValue(0));
     onEnterBreak();
-    onClose();
+  };
+
+  const handleWellDoneClose = () => {
+    setShowWellDone(false);
+    setDoneTaskIds(new Set());
+    setPerformedHabitIds(new Set());
+    setCompleted(false);
+    setRewards(null);
   };
 
   // Use state for display values - update via intervals during animation
@@ -198,14 +225,25 @@ export const EndSessionModal: React.FC<EndSessionModalProps> = ({
   }, [completed, rewards]);
 
   return (
-    <Modal
-      visible={visible}
-      transparent={true}
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View style={styles.overlay}>
-        <GlassCard style={styles.modalCard}>
+    <>
+      <WellDoneModal
+        visible={showWellDone}
+        tasksCompleted={doneTaskIds.size}
+        habitsCompleted={performedHabitIds.size}
+        coinsEarned={rewards?.coins || 0}
+        xpGained={rewards?.xp || { PH: 0, CO: 0, EM: 0, SO: 0 }}
+        currentStreak={userStats.current_streak}
+        onEnterBreak={handleEnterBreak}
+        onClose={handleWellDoneClose}
+      />
+      <Modal
+        visible={visible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={onClose}
+      >
+        <View style={styles.overlay}>
+          <GlassCard style={styles.modalCard}>
           {!completed ? (
             <>
               <Text style={[styles.title, { color: colors.text }]}>
@@ -401,6 +439,7 @@ export const EndSessionModal: React.FC<EndSessionModalProps> = ({
         </GlassCard>
       </View>
     </Modal>
+    </>
   );
 };
 

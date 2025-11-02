@@ -30,7 +30,7 @@ const normalizeStats = (
 ): UserStats => ({
   id: stats?.id ?? '',
   user_id: stats?.user_id ?? '',
-  total_coins: stats?.total_coins ?? 40,
+  total_coins: stats?.total_coins ?? 0,
   current_streak: stats?.current_streak ?? 0,
   longest_streak: stats?.longest_streak ?? 0,
   total_focus_time: stats?.total_focus_time ?? 0,
@@ -124,7 +124,7 @@ export const useUserStats = () => {
           .from('user_stats')
           .insert({
             user_id: userId,
-            total_coins: 40,
+            total_coins: 0,
             current_streak: 0,
             longest_streak: 0,
             total_focus_time: 0,
@@ -153,49 +153,80 @@ export const useUserStats = () => {
   };
 
   const addCoins = async (amount: number) => {
-    const newTotal = userStats.total_coins + amount;
-    const updatedStats = { ...userStats, total_coins: newTotal };
-    setUserStats(updatedStats);
-
     try {
       const userId = await getUserId();
-      await saveStatsLocally(userId, updatedStats);
+      const newTotal = userStats.total_coins + amount;
 
+      // Update Supabase FIRST for authenticated users
       if (supabase && isUuid(userId)) {
-        await supabase
+        const { data, error } = await supabase
           .from('user_stats')
           .update({ total_coins: newTotal })
-          .eq('user_id', userId);
+          .eq('user_id', userId)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Sync with local state from database response
+        if (data) {
+          const normalized = normalizeStats(data, userStats.total_sprints);
+          setUserStats(normalized);
+          await saveStatsLocally(userId, normalized);
+          return;
+        }
       }
+
+      // Fallback for guest users (local only)
+      const updatedStats = { ...userStats, total_coins: newTotal };
+      setUserStats(updatedStats);
+      await saveStatsLocally(userId, updatedStats);
     } catch (error) {
       console.error('Error updating coins:', error);
+      // Rollback on error - refetch from database
+      await loadStats();
     }
   };
 
   const updateStreak = async (newStreak: number) => {
-    const longestStreak = Math.max(userStats.longest_streak, newStreak);
-    const updatedStats = {
-      ...userStats,
-      current_streak: newStreak,
-      longest_streak: longestStreak,
-    };
-    setUserStats(updatedStats);
-
     try {
       const userId = await getUserId();
-      await saveStatsLocally(userId, updatedStats);
+      const longestStreak = Math.max(userStats.longest_streak, newStreak);
 
+      // Update Supabase FIRST for authenticated users
       if (supabase && isUuid(userId)) {
-        await supabase
+        const { data, error } = await supabase
           .from('user_stats')
           .update({
             current_streak: newStreak,
             longest_streak: longestStreak,
           })
-          .eq('user_id', userId);
+          .eq('user_id', userId)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Sync with local state from database response
+        if (data) {
+          const normalized = normalizeStats(data, userStats.total_sprints);
+          setUserStats(normalized);
+          await saveStatsLocally(userId, normalized);
+          return;
+        }
       }
+
+      // Fallback for guest users (local only)
+      const updatedStats = {
+        ...userStats,
+        current_streak: newStreak,
+        longest_streak: longestStreak,
+      };
+      setUserStats(updatedStats);
+      await saveStatsLocally(userId, updatedStats);
     } catch (error) {
       console.error('Error updating streak:', error);
+      await loadStats();
     }
   };
 
@@ -249,6 +280,8 @@ export const useUserStats = () => {
 
   const addXP = async (attribute: AttributeKey, amount: number) => {
     try {
+      const userId = await getUserId();
+
       // Get current attributes or use defaults
       const currentAttributes = userStats.attributes || { PH: 0, CO: 0, EM: 0, SO: 0 };
 
@@ -258,24 +291,36 @@ export const useUserStats = () => {
         [attribute]: (currentAttributes[attribute] || 0) + amount,
       };
 
+      // Update Supabase FIRST for authenticated users
+      if (supabase && isUuid(userId)) {
+        const { data, error } = await supabase
+          .from('user_stats')
+          .update({ attributes: updatedAttributes })
+          .eq('user_id', userId)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Sync with local state from database response
+        if (data) {
+          const normalized = normalizeStats(data, userStats.total_sprints);
+          setUserStats(normalized);
+          await saveStatsLocally(userId, normalized);
+          return;
+        }
+      }
+
+      // Fallback for guest users (local only)
       const updatedStats = {
         ...userStats,
         attributes: updatedAttributes,
       };
-
       setUserStats(updatedStats);
-
-      const userId = await getUserId();
       await saveStatsLocally(userId, updatedStats);
-
-      if (supabase && isUuid(userId)) {
-        await supabase
-          .from('user_stats')
-          .update({ attributes: updatedAttributes })
-          .eq('user_id', userId);
-      }
     } catch (error) {
       console.error('Error updating XP:', error);
+      await loadStats();
     }
   };
 

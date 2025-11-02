@@ -82,14 +82,13 @@ export const Toast: React.FC<ToastProps> = ({
         }),
       ]).start();
 
-      // Auto hide after duration (unless there's an action button)
-      if (!action) {
-        const timer = setTimeout(() => {
-          hideToast();
-        }, duration);
+      // Auto hide after duration (longer if there's an action button)
+      const autoDismissDuration = action ? 5000 : duration; // 5 seconds for action toasts
+      const timer = setTimeout(() => {
+        hideToast();
+      }, autoDismissDuration);
 
-        return () => clearTimeout(timer);
-      }
+      return () => clearTimeout(timer);
     } else {
       hideToast();
     }
